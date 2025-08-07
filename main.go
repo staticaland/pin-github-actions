@@ -123,7 +123,7 @@ func main() {
 	}
 	fmt.Println()
 
-	fmt.Println("Getting latest versions and SHAs (parallel processing)...")
+	fmt.Println("Getting latest versions and SHAs (parallel processing).")
 
 	token, err := getGitHubToken()
 	if err != nil {
