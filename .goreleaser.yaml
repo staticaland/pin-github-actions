@@ -5,5 +5,5 @@ builds:
 
 homebrew_casks:
   - repository:
-      owner: "{{ .GitHubUser }}"
-      name: "{{ .GitHubRepo }}"
+      owner: staticaland
+      name: pin-github-actions
