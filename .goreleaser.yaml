@@ -7,3 +7,9 @@ homebrew_casks:
   - repository:
       owner: staticaland
       name: pin-github-actions
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/pin-github-actions"]
+          end
