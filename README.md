@@ -2,15 +2,29 @@
 
 CLI to pin GitHub Actions in workflow files to immutable commit SHAs.
 
-## Install
+## Installation
 
 ### Homebrew (macOS/Linux)
 
+First, tap the repository:
+
 ```bash
-brew install --cask staticaland/pin-github-actions/pin-github-actions
+brew tap staticaland/pin-github-actions
 ```
 
-### Go install
+Then, install the cask:
+
+```bash
+brew install --cask pin-github-actions
+```
+
+### From Source
+
+```bash
+go build -o pin-github-actions
+```
+
+Or install directly:
 
 ```bash
 go install github.com/staticaland/pin-github-actions@latest
