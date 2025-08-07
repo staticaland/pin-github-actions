@@ -1,0 +1,9 @@
+builds:
+  - goos:
+      - darwin
+      - linux
+
+homebrew_casks:
+  - repository:
+      owner: "{{ .GitHubUser }}"
+      name: "{{ .GitHubRepo }}"
