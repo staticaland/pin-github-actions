@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/staticaland/pin-github-actions/compare/v1.4.0...v1.5.0) (2025-08-07)
+
+
+### Features
+
+* Use bold in output ([85b3308](https://github.com/staticaland/pin-github-actions/commit/85b330889d21800e8a2a410bf29bc46382d4a125))
+
 ## [1.4.0](https://github.com/staticaland/pin-github-actions/compare/v1.3.0...v1.4.0) (2025-08-07)
 
 
