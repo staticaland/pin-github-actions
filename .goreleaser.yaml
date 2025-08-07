@@ -1,46 +1,9 @@
-# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-version: 2
-
-# The changelog is managed by release-please
-changelog:
-  disable: true
-
 builds:
-  - binary: pin-github-actions
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
+  - goos:
       - darwin
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - "-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}"
-
-nfpms:
-  - package_name: pin-github-actions
-    maintainer: "staticaland"
-    description: "CLI to pin GitHub Actions in workflow files to immutable commit SHAs"
-    homepage: "https://github.com/staticaland/pin-github-actions"
-    license: "MIT"
-    formats:
-      - deb
-      - rpm
-      - archlinux
+      - linux
 
 homebrew_casks:
-  - name: pin-github-actions
-    description: "CLI to pin GitHub Actions in workflow files to immutable commit SHAs"
-    homepage: "https://github.com/staticaland/pin-github-actions"
-    repository:
-      owner: staticaland
-      name: pin-github-actions
-    commit_message_template: "chore: brew cask update for {{ .ProjectName }} version {{ .Tag }}"
-    directory: Casks
-    hooks:
-      post:
-        install: |
-          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/pin-github-actions"]
-          end
+  - repository:
+      owner: "{{ .GitHubUser }}"
+      name: "{{ .GitHubRepo }}"
