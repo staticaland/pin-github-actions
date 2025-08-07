@@ -2,7 +2,7 @@
 cask "pin-github-actions" do
   desc ""
   homepage ""
-  version "1.4.0"
+  version "1.5.0"
 
   livecheck do
     skip "Auto-generated on release."
@@ -12,23 +12,23 @@ cask "pin-github-actions" do
 
   on_macos do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.4.0/pin-github-actions_1.4.0_darwin_amd64.tar.gz"
-      sha256 "2a8474308a9f4a462fb85e9cd1cf02e4bce25ba9e94568b00a208b685b1de320"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.5.0/pin-github-actions_1.5.0_darwin_amd64.tar.gz"
+      sha256 "db62f6397ed705ced47e90d4b675c4ea923d8f6923d6edaa447d708ccad10ce3"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.4.0/pin-github-actions_1.4.0_darwin_arm64.tar.gz"
-      sha256 "6b2fdbe7532b534a8e4f59fabcff918b4791ad855283ba3032bb2f6a3c3ea387"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.5.0/pin-github-actions_1.5.0_darwin_arm64.tar.gz"
+      sha256 "16e989929219c2126acb1d15f954abace17ca08d0979de3bcb9a7be2c11abbcd"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.4.0/pin-github-actions_1.4.0_linux_amd64.tar.gz"
-      sha256 "af49a39cb18945d65b479527788f9cbc729a8edab6c8a9c783957177977c7213"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.5.0/pin-github-actions_1.5.0_linux_amd64.tar.gz"
+      sha256 "6083f59f8c1f9032bece80c863698c8909cf216845cd1d8ce540625bc4772c9f"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.4.0/pin-github-actions_1.4.0_linux_arm64.tar.gz"
-      sha256 "d34c4507db212ad9df388fe0c9ce4ac55ff4832c2c090d0bbb0edb76e2884c24"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.5.0/pin-github-actions_1.5.0_linux_arm64.tar.gz"
+      sha256 "ba10e5034bb9a3ea623c95d3096ca1c4eccd843964dd9599b1100a8020b1c37d"
     end
   end
 
