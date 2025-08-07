@@ -18,6 +18,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+)
+
 type ActionInfo struct {
 	Owner   string
 	Repo    string
@@ -175,47 +180,47 @@ func main() {
 func extractActions(content string) []string {
 	re := regexp.MustCompile(`uses:\s+([^@/]+/[^@\s]+)`)
 	matches := re.FindAllStringSubmatch(content, -1)
-	
+
 	actionSet := make(map[string]bool)
 	for _, match := range matches {
 		if len(match) > 1 {
 			actionSet[match[1]] = true
 		}
 	}
-	
+
 	var actions []string
 	for action := range actionSet {
 		actions = append(actions, action)
 	}
 	sort.Strings(actions)
-	
+
 	return actions
 }
 
 func getActionInfos(ctx context.Context, client *github.Client, actions []string) []ActionInfo {
 	var wg sync.WaitGroup
 	actionInfos := make([]ActionInfo, len(actions))
-	
+
 	for i, action := range actions {
 		wg.Add(1)
 		go func(idx int, actionName string) {
 			defer wg.Done()
-			
+
 			parts := strings.Split(actionName, "/")
 			if len(parts) != 2 {
 				actionInfos[idx] = ActionInfo{Error: fmt.Errorf("invalid action format: %s", actionName)}
 				return
 			}
-			
+
 			owner, repo := parts[0], parts[1]
-			
+
 			release, _, err := client.Repositories.GetLatestRelease(ctx, owner, repo)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Could not get latest version for %s: %v\n", actionName, err)
 				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Error: err}
 				return
 			}
-			
+
 			version := release.GetTagName()
 			if version == "" {
 				err := fmt.Errorf("no tag name found for latest release")
@@ -223,14 +228,14 @@ func getActionInfos(ctx context.Context, client *github.Client, actions []string
 				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Error: err}
 				return
 			}
-			
+
 			ref, _, err := client.Git.GetRef(ctx, owner, repo, "tags/"+version)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Could not get SHA for %s@%s: %v\n", actionName, version, err)
 				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: version, Error: err}
 				return
 			}
-			
+
 			sha := ref.GetObject().GetSHA()
 			if sha == "" {
 				err := fmt.Errorf("no SHA found for tag %s", version)
@@ -238,47 +243,47 @@ func getActionInfos(ctx context.Context, client *github.Client, actions []string
 				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: version, Error: err}
 				return
 			}
-			
+
 			actionInfos[idx] = ActionInfo{
 				Owner:   owner,
 				Repo:    repo,
 				Version: version,
 				SHA:     sha,
 			}
-			
+
 			fmt.Printf("%s -> %s (%s)\n", actionName, version, sha)
 		}(i, action)
 	}
-	
+
 	wg.Wait()
-	
+
 	var validInfos []ActionInfo
 	for _, info := range actionInfos {
 		if info.Error == nil {
 			validInfos = append(validInfos, info)
 		}
 	}
-	
+
 	return validInfos
 }
 
 func updateContent(content string, actionInfos []ActionInfo) string {
 	result := content
-	
+
 	for _, info := range actionInfos {
 		if info.Error != nil {
 			continue
 		}
-		
+
 		actionName := fmt.Sprintf("%s/%s", info.Owner, info.Repo)
-		
+
 		pattern := fmt.Sprintf(`(uses:\s+%s)@[^\s]*(\s*#[^\n]*)?`, regexp.QuoteMeta(actionName))
 		replacement := fmt.Sprintf("${1}@%s # %s", info.SHA, info.Version)
-		
+
 		re := regexp.MustCompile(pattern)
 		result = re.ReplaceAllString(result, replacement)
 	}
-	
+
 	return result
 }
 
@@ -290,7 +295,7 @@ func showDiff(filename, oldContent, newContent string) {
 	}
 	defer os.Remove(oldFile.Name())
 	defer oldFile.Close()
-	
+
 	newFile, err := os.CreateTemp("", "new-*.yml")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating temp file: %v\n", err)
@@ -298,15 +303,15 @@ func showDiff(filename, oldContent, newContent string) {
 	}
 	defer os.Remove(newFile.Name())
 	defer newFile.Close()
-	
+
 	oldFile.WriteString(oldContent)
 	newFile.WriteString(newContent)
 	oldFile.Close()
 	newFile.Close()
-	
+
 	cmd := exec.Command("diff", "-u", oldFile.Name(), newFile.Name())
 	output, _ := cmd.Output()
-	
+
 	diffLines := strings.Split(string(output), "\n")
 	if len(diffLines) > 2 {
 		diffLines[0] = "--- " + filename + ".old"

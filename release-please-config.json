@@ -1,0 +1,18 @@
+{
+  "release-search-depth": 100,
+  "commit-search-depth": 100,
+  "release-type": "go",
+  "separate-pull-requests": false,
+  "packages": {
+    ".": {
+      "component": "",
+      "release-type": "simple",
+      "changelog-sections": [
+        { "type": "feat", "section": "Features" },
+        { "type": "fix", "section": "Bug fixes" },
+        { "type": "deps", "section": "Dependency updates" }
+      ]
+    }
+  }
+}
+
