@@ -37,6 +37,10 @@ type GitHubHosts struct {
 	} `yaml:"github.com"`
 }
 
+func bold(text string) string {
+	return "\u001b[1m" + text + "\u001b[0m"
+}
+
 func getGitHubToken() (string, error) {
 	if token := os.Getenv("GH_TOKEN"); token != "" {
 		return token, nil
@@ -103,7 +107,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Finding GitHub Actions in %s...\n", workflowFile)
+	fmt.Printf("%s %s\n", bold("Scanning workflow"), workflowFile)
 
 	content, err := os.ReadFile(workflowFile)
 	if err != nil {
@@ -113,17 +117,17 @@ func main() {
 
 	actions := extractActions(string(content))
 	if len(actions) == 0 {
-		fmt.Printf("No GitHub Actions found in %s\n", workflowFile)
+		fmt.Printf("%s No GitHub Actions references found in %s\n", bold("No actions:"), workflowFile)
 		os.Exit(1)
 	}
 
-	fmt.Println("Found actions:")
+	fmt.Println(bold("Discovered actions:"))
 	for _, action := range actions {
 		fmt.Printf("  - %s\n", action)
 	}
 	fmt.Println()
 
-	fmt.Println("Getting latest versions and SHAs (parallel processing).")
+	fmt.Println(bold("Resolving latest versions and SHAs (parallel)..."))
 
 	token, err := getGitHubToken()
 	if err != nil {
@@ -137,27 +141,27 @@ func main() {
 	actionInfos := getActionInfos(ctx, client, actions)
 
 	if len(actionInfos) == 0 {
-		fmt.Println("Failed to get action information")
+		fmt.Println(bold("No action information retrieved."))
 		os.Exit(1)
 	}
 
 	fmt.Println()
-	fmt.Printf("Updating %s...\n", workflowFile)
+	fmt.Printf("%s %s\n", bold("Updating file"), workflowFile)
 
 	updatedContent := updateContent(string(content), actionInfos)
 
 	if string(content) == updatedContent {
-		fmt.Println("No updates needed - all actions are already at latest versions!")
+		fmt.Println(bold("Up to date:"), "All actions are already pinned to the latest versions.")
 		return
 	}
 
 	fmt.Println()
-	fmt.Println("Changes to be made:")
+	fmt.Println(bold("Proposed changes:"))
 	showDiff(workflowFile, string(content), updatedContent)
 
 	fmt.Println()
-	if !promptConfirmation("Apply these changes? [y/N] ") {
-		fmt.Println("Changes not applied")
+	if !promptConfirmation(bold("Apply changes?") + " [y/N] ") {
+		fmt.Println(bold("No changes applied."))
 		return
 	}
 
@@ -167,9 +171,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Updated %s successfully!\n", workflowFile)
+	fmt.Printf("%s %s\n", bold("Updated file"), workflowFile)
 	fmt.Println()
-	fmt.Println("Summary of pinned actions:")
+	fmt.Println(bold("Pinned actions:"))
 	for _, info := range actionInfos {
 		if info.Error == nil {
 			fmt.Printf("  %s/%s@%s # %s\n", info.Owner, info.Repo, info.SHA, info.Version)
@@ -216,7 +220,7 @@ func getActionInfos(ctx context.Context, client *github.Client, actions []string
 
 			release, _, err := client.Repositories.GetLatestRelease(ctx, owner, repo)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Could not get latest version for %s: %v\n", actionName, err)
+				fmt.Fprintf(os.Stderr, "%s Could not get latest version for %s: %v\n", bold("WARN:"), actionName, err)
 				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Error: err}
 				return
 			}
@@ -224,14 +228,14 @@ func getActionInfos(ctx context.Context, client *github.Client, actions []string
 			version := release.GetTagName()
 			if version == "" {
 				err := fmt.Errorf("no tag name found for latest release")
-				fmt.Fprintf(os.Stderr, "Warning: %s\n", err)
+				fmt.Fprintf(os.Stderr, "%s %s\n", bold("WARN:"), err)
 				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Error: err}
 				return
 			}
 
 			ref, _, err := client.Git.GetRef(ctx, owner, repo, "tags/"+version)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Could not get SHA for %s@%s: %v\n", actionName, version, err)
+				fmt.Fprintf(os.Stderr, "%s Could not get SHA for %s@%s: %v\n", bold("WARN:"), actionName, version, err)
 				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: version, Error: err}
 				return
 			}
@@ -239,7 +243,7 @@ func getActionInfos(ctx context.Context, client *github.Client, actions []string
 			sha := ref.GetObject().GetSHA()
 			if sha == "" {
 				err := fmt.Errorf("no SHA found for tag %s", version)
-				fmt.Fprintf(os.Stderr, "Warning: %s\n", err)
+				fmt.Fprintf(os.Stderr, "%s %s\n", bold("WARN:"), err)
 				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: version, Error: err}
 				return
 			}
@@ -251,7 +255,7 @@ func getActionInfos(ctx context.Context, client *github.Client, actions []string
 				SHA:     sha,
 			}
 
-			fmt.Printf("%s -> %s (%s)\n", actionName, version, sha)
+			fmt.Printf("  %s: latest %s -> %s\n", actionName, version, sha)
 		}(i, action)
 	}
 
