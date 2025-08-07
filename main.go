@@ -5,15 +5,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/google/go-github/v57/github"
+	"github.com/zalando/go-keyring"
+	"gopkg.in/yaml.v3"
 )
 
 type ActionInfo struct {
@@ -22,6 +24,59 @@ type ActionInfo struct {
 	Version string
 	SHA     string
 	Error   error
+}
+
+type GitHubHosts struct {
+	GitHubCom struct {
+		OAuthToken string `yaml:"oauth_token"`
+	} `yaml:"github.com"`
+}
+
+func getGitHubToken() (string, error) {
+	if token := os.Getenv("GH_TOKEN"); token != "" {
+		return token, nil
+	}
+
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		return token, nil
+	}
+
+	token, err := keyring.Get("gh:github.com", "")
+	if err == nil {
+		return token, nil
+	}
+
+	token, err = getGitHubTokenFromHostsFile()
+	if err == nil {
+		return token, nil
+	}
+
+	return "", fmt.Errorf("no GitHub token found. Set GH_TOKEN or GITHUB_TOKEN environment variable, or use 'gh auth login'")
+}
+
+func getGitHubTokenFromHostsFile() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	hostsFile := filepath.Join(homeDir, ".config", "gh", "hosts.yml")
+	data, err := os.ReadFile(hostsFile)
+	if err != nil {
+		return "", err
+	}
+
+	var hosts GitHubHosts
+	err = yaml.Unmarshal(data, &hosts)
+	if err != nil {
+		return "", err
+	}
+
+	if hosts.GitHubCom.OAuthToken != "" {
+		return hosts.GitHubCom.OAuthToken, nil
+	}
+
+	return "", fmt.Errorf("no oauth_token found in hosts file")
 }
 
 func main() {
@@ -65,9 +120,9 @@ func main() {
 
 	fmt.Println("Getting latest versions and SHAs (parallel processing)...")
 
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		fmt.Fprintf(os.Stderr, "Error: GITHUB_TOKEN environment variable not set\n")
+	token, err := getGitHubToken()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
