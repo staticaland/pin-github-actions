@@ -1,0 +1,7 @@
+module github.com/staticaland/pin-github-actions
+
+go 1.21
+
+require github.com/google/go-github/v57 v57.0.0
+
+require github.com/google/go-querystring v1.1.0 // indirect
