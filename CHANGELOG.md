@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/staticaland/pin-github-actions/compare/v1.1.0...v1.2.0) (2025-08-07)
+
+
+### Features
+
+* Trigger release ([145811f](https://github.com/staticaland/pin-github-actions/commit/145811f84227e6d7a5f61be6981be9f98f486f8f))
+
 ## [1.1.0](https://github.com/staticaland/pin-github-actions/compare/v1.0.0...v1.1.0) (2025-08-07)
 
 
