@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.0](https://github.com/staticaland/pin-github-actions/compare/v1.5.0...v1.6.0) (2025-08-08)
+
+
+### Features
+
+* add --expand-major flag to expand whole-number major refs to full semver in comments; still pin to commit SHA\n\n- add flag and wire through resolution\n- map resolved major ref commit to full version tag when possible\n- update README usage/docs ([73bcb22](https://github.com/staticaland/pin-github-actions/commit/73bcb22120533d05af9b5f9fc44a803a29efb385))
+* add policy for selecting new versions ([6e84741](https://github.com/staticaland/pin-github-actions/commit/6e8474138a6c7b3487f8eb97821f804b9d8a6ccd))
+* fallback to tags for actions without releases; use semver (Masterminds/semver) to pick highest version or newest tag; resolve moving major tags (e.g., v4) to current commit; dereference annotated tags ([73b129c](https://github.com/staticaland/pin-github-actions/commit/73b129ca5247ddb4b04ec1c47c93ce1ef119f761))
+* pretty output ([086cdee](https://github.com/staticaland/pin-github-actions/commit/086cdee308b4239866708f8f7f3a5814e2b5861a))
+
+
+### Bug fixes
+
+* dereference annotated tags to commit SHA when resolving refs ([016e103](https://github.com/staticaland/pin-github-actions/commit/016e1039c9b787c18fba40b93df0fe92dba632c9))
+
 ## [1.5.0](https://github.com/staticaland/pin-github-actions/compare/v1.4.0...v1.5.0) (2025-08-07)
 
 
