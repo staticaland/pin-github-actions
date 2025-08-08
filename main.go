@@ -425,7 +425,7 @@ func selectTagBySameMajor(ctx context.Context, client *github.Client, owner, rep
 		// If none are found on a page and tags are ordered newest-first by the API,
 		// we assume older pages will also not contain newer matches and can stop early
 		// once we have already seen at least one match in prior pages.
-		hadMatchThisPage := false
+		foundMatchOnCurrentPage := false
 
 		for _, t := range tags {
 			name := t.GetName()
