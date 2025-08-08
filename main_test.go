@@ -69,15 +69,15 @@ jobs:
 		t.Errorf("updateContent() failed")
 		t.Logf("Expected:\n%s", expected)
 		t.Logf("Got:\n%s", result)
-		
+
 		expectedLines := strings.Split(expected, "\n")
 		resultLines := strings.Split(result, "\n")
-		
+
 		maxLines := len(expectedLines)
 		if len(resultLines) > maxLines {
 			maxLines = len(resultLines)
 		}
-		
+
 		for i := 0; i < maxLines; i++ {
 			var expectedLine, resultLine string
 			if i < len(expectedLines) {
@@ -86,7 +86,7 @@ jobs:
 			if i < len(resultLines) {
 				resultLine = resultLines[i]
 			}
-			
+
 			if expectedLine != resultLine {
 				t.Logf("Diff at line %d:", i+1)
 				t.Logf("  Expected: %q", expectedLine)

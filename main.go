@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -94,6 +95,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage: %s <workflow-file>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Example: %s .github/workflows/update_cli_docs.yml\n", os.Args[0])
 	}
+	// Toggle: when a moving major tag (e.g., v4 or 4) is detected, expand the displayed version
+	// comment to the full semver tag (e.g., v4.2.2) that the major tag currently points to.
+	expandMajorFlag := flag.Bool("expand-major", false, "Expand moving major tags (vN or N) to full semver in the version comment")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -140,7 +144,7 @@ func main() {
 	ctx := context.Background()
 	client := github.NewTokenClient(ctx, token)
 
-	actionInfos := getActionInfos(ctx, client, actions, requestedRefs)
+	actionInfos := getActionInfos(ctx, client, actions, requestedRefs, *expandMajorFlag)
 
 	if len(actionInfos) == 0 {
 		fmt.Println(bold("No action information retrieved."))
@@ -284,6 +288,52 @@ func selectTagBySemverOrNewest(ctx context.Context, client *github.Client, owner
 	return sha, tagName, nil
 }
 
+// findFullSemverTagForMajorCommit attempts to find the exact full semver tag (e.g., v4.2.2)
+// that currently corresponds to the provided moving major ref (e.g., v4 or 4), by matching
+// the resolved commit SHA of the major tag against all semver tags with the same major.
+func findFullSemverTagForMajorCommit(ctx context.Context, client *github.Client, owner, repo, majorRef, resolvedCommitSHA string) (string, error) {
+	// Parse major number from ref (strip optional leading 'v')
+	ref := majorRef
+	if strings.HasPrefix(ref, "v") {
+		ref = strings.TrimPrefix(ref, "v")
+	}
+	majorInt, err := strconv.Atoi(ref)
+	if err != nil {
+		return "", fmt.Errorf("not a major ref: %s", majorRef)
+	}
+
+	page := 1
+	for {
+		opts := &github.ListOptions{PerPage: 100, Page: page}
+		tags, resp, listErr := client.Repositories.ListTags(ctx, owner, repo, opts)
+		if listErr != nil {
+			return "", listErr
+		}
+		for _, t := range tags {
+			name := t.GetName()
+			v, parseErr := semver.NewVersion(name)
+			if parseErr != nil {
+				continue
+			}
+			if int(v.Major()) != majorInt {
+				continue
+			}
+			sha, _, resolveErr := resolveTagToCommitSHA(ctx, client, owner, repo, name)
+			if resolveErr != nil {
+				continue
+			}
+			if sha == resolvedCommitSHA {
+				return name, nil
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		page = resp.NextPage
+	}
+	return "", fmt.Errorf("no matching full tag found for %s", majorRef)
+}
+
 func normalizeMajorRef(ref string) string {
 	// Ensure we try with leading 'v' first; many repos use that form
 	if strings.HasPrefix(ref, "v") {
@@ -292,7 +342,7 @@ func normalizeMajorRef(ref string) string {
 	return "v" + ref
 }
 
-func getActionInfos(ctx context.Context, client *github.Client, actions []string, requestedRefs map[string]string) []ActionInfo {
+func getActionInfos(ctx context.Context, client *github.Client, actions []string, requestedRefs map[string]string, expandMajor bool) []ActionInfo {
 	var wg sync.WaitGroup
 	actionInfos := make([]ActionInfo, len(actions))
 
@@ -325,8 +375,14 @@ func getActionInfos(ctx context.Context, client *github.Client, actions []string
 					}
 				}
 				if err == nil {
-					actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}
-					fmt.Printf("  %s: %s -> %s\n", actionName, tagName, sha)
+					resolvedVersion := tagName
+					if expandMajor {
+						if fullTag, ferr := findFullSemverTagForMajorCommit(ctx, client, owner, repo, ref, sha); ferr == nil && fullTag != "" {
+							resolvedVersion = fullTag
+						}
+					}
+					actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: resolvedVersion, SHA: sha}
+					fmt.Printf("  %s: %s -> %s\n", actionName, resolvedVersion, sha)
 					return
 				}
 				// If failed to resolve requested moving tag, continue to normal resolution below
