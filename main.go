@@ -241,6 +241,16 @@ func getActionInfos(ctx context.Context, client *github.Client, actions []string
 			}
 
 			sha := ref.GetObject().GetSHA()
+			// Dereference annotated tags to the underlying commit SHA.
+			if ref.GetObject().GetType() == "tag" {
+				tagObj, _, tagErr := client.Git.GetTag(ctx, owner, repo, sha)
+				if tagErr != nil {
+					// Keep original sha but warn
+					fmt.Fprintf(os.Stderr, "%s Could not dereference annotated tag for %s@%s: %v\n", bold("WARN:"), actionName, version, tagErr)
+				} else if tagObj != nil && tagObj.GetObject().GetType() == "commit" && tagObj.GetObject().GetSHA() != "" {
+					sha = tagObj.GetObject().GetSHA()
+				}
+			}
 			if sha == "" {
 				err := fmt.Errorf("no SHA found for tag %s", version)
 				fmt.Fprintf(os.Stderr, "%s %s\n", bold("WARN:"), err)
