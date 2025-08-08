@@ -413,6 +413,7 @@ func selectTagBySameMajor(ctx context.Context, client *github.Client, owner, rep
 	page := 1
 	var bestVersion *semver.Version
 	var bestTagName string
+	foundMatchInPriorPages := false
 
 	for {
 		opts := &github.ListOptions{PerPage: 100, Page: page}
@@ -420,6 +421,12 @@ func selectTagBySameMajor(ctx context.Context, client *github.Client, owner, rep
 		if err != nil {
 			return "", "", err
 		}
+
+		// Track whether this page contained any tags matching the requested major.
+		// If none are found on a page and tags are ordered newest-first by the API,
+		// we can stop early once we have already seen at least one match in prior pages.
+		foundMatchOnCurrentPage := false
+
 		for _, t := range tags {
 			name := t.GetName()
 			v, parseErr := semver.NewVersion(name)
@@ -429,11 +436,22 @@ func selectTagBySameMajor(ctx context.Context, client *github.Client, owner, rep
 			if int(v.Major()) != major {
 				continue
 			}
+			foundMatchOnCurrentPage = true
 			if bestVersion == nil || v.GreaterThan(bestVersion) {
 				bestVersion = v
 				bestTagName = name
 			}
 		}
+
+		// Early stop heuristic: only stop when the current page has no matches AND we
+		// previously saw at least one matching tag on an earlier page.
+		if !foundMatchOnCurrentPage && foundMatchInPriorPages {
+			break
+		}
+		if foundMatchOnCurrentPage {
+			foundMatchInPriorPages = true
+		}
+
 		if resp == nil || resp.NextPage == 0 {
 			break
 		}
