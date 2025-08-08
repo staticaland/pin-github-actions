@@ -24,6 +24,9 @@ jobs:
           driver: docker-container
       - uses: actions/upload-artifact@v4.0.0`
 
+	// Build occurrences from the input
+	occurrences := extractOccurrences(input)
+
 	actionInfos := []ActionInfo{
 		{
 			Owner:   "actions",
@@ -45,7 +48,7 @@ jobs:
 		},
 	}
 
-	result := updateContent(input, actionInfos)
+	result := updateContent(input, occurrences, actionInfos)
 
 	expected := `name: Test Workflow
 on:

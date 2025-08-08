@@ -33,6 +33,26 @@ type ActionInfo struct {
 	Error   error
 }
 
+// ActionOccurrence represents a single occurrence of a `uses: owner/repo@ref` entry
+// in the workflow content. It tracks the exact byte offsets for safe in-place replacement
+// and also provides human-friendly line/column for output.
+type ActionOccurrence struct {
+	Owner        string
+	Repo         string
+	Action       string // owner/repo
+	RequestedRef string
+
+	// Byte offsets in the original file content
+	MatchStart   int // start of the entire `uses: ...` match
+	MatchEnd     int // end of the entire match
+	ReplaceStart int // start of the replacement span (the '@' character before the ref)
+	ReplaceEnd   int // end of the replacement span (end of match)
+
+	// 1-based positions for display
+	Line   int
+	Column int
+}
+
 type GitHubHosts struct {
 	GitHubCom struct {
 		OAuthToken string `yaml:"oauth_token"`
@@ -110,23 +130,26 @@ func isFullSHA(s string) bool {
 	return true
 }
 
-// printPlannedChanges prints a concise from → to mapping for each action that will change.
-func printPlannedChanges(requestedRefs map[string]string, actionInfos []ActionInfo) {
+// printPlannedChanges prints a concise from → to mapping for each occurrence that will change.
+func printPlannedChanges(occurrences []ActionOccurrence, actionInfos []ActionInfo) {
 	fmt.Println(bold("Planned updates:\n"))
 	hadChange := false
-	for _, info := range actionInfos {
+	for i, occ := range occurrences {
+		if i >= len(actionInfos) {
+			continue
+		}
+		info := actionInfos[i]
 		if info.Error != nil {
 			continue
 		}
-		action := fmt.Sprintf("%s/%s", info.Owner, info.Repo)
-		oldRef := requestedRefs[action]
+		oldRef := occ.RequestedRef
 		newRef := info.SHA
-		if oldRef == newRef {
-			// No change for this action; skip in the plan
+		if oldRef == newRef || newRef == "" {
 			continue
 		}
-		// Example: "  - actions/checkout: v4 → 5e2f1c1…  (v4.2.2)"
-		fmt.Printf("  - %s: %s → %s  (%s)\n", action, prettyRef(oldRef), prettyRef(newRef), info.Version)
+		action := fmt.Sprintf("%s/%s", info.Owner, info.Repo)
+		// Example: "  - actions/checkout (L12:C9): v4 → 5e2f1c1…  (v4.2.2)"
+		fmt.Printf("  - %s (L%d:C%d): %s → %s  (%s)\n", action, occ.Line, occ.Column, prettyRef(oldRef), prettyRef(newRef), info.Version)
 		hadChange = true
 	}
 	if !hadChange {
@@ -213,7 +236,7 @@ func main() {
 	}
 
 	actions := extractActions(string(content))
-	requestedRefs := extractActionRefs(string(content))
+	occurrences := extractOccurrences(string(content))
 	if len(actions) == 0 {
 		fmt.Printf("%s No GitHub Actions references found in %s\n", bold("No actions:"), workflowFile)
 		os.Exit(1)
@@ -242,7 +265,7 @@ func main() {
 	ctx := context.Background()
 	client := github.NewTokenClient(ctx, token)
 
-	actionInfos := getActionInfos(ctx, client, actions, requestedRefs, *expandMajorFlag, effectivePolicy)
+	actionInfos := getActionInfosForOccurrences(ctx, client, occurrences, *expandMajorFlag, effectivePolicy)
 
 	if len(actionInfos) == 0 {
 		fmt.Println(bold("No action information retrieved."))
@@ -252,11 +275,11 @@ func main() {
 	fmt.Println()
 	fmt.Printf("%s %s\n", bold("Updating file"), workflowFile)
 
-	updatedContent := updateContent(string(content), actionInfos)
+	updatedContent := updateContent(string(content), occurrences, actionInfos)
 
 	// Always show planned updates for a clear from → to view
 	fmt.Println()
-	printPlannedChanges(requestedRefs, actionInfos)
+	printPlannedChanges(occurrences, actionInfos)
 
 	if string(content) == updatedContent {
 		fmt.Println()
@@ -265,7 +288,7 @@ func main() {
 	}
 
 	fmt.Println()
-	if !promptConfirmation(bold("Apply changes?") + " [y/N] ") {
+	if !promptConfirmation(bold("Apply changes?")+" [y/N] ") {
 		fmt.Println(bold("\nNo changes applied."))
 		return
 	}
@@ -306,20 +329,67 @@ func extractActions(content string) []string {
 	return actions
 }
 
-func extractActionRefs(content string) map[string]string {
-	// Matches: uses: owner/repo@ref (ignores trailing comments)
-	re := regexp.MustCompile(`uses:\s+([^@/]+/[^@\s]+)@([^\s#]+)`) // group1: owner/repo, group2: ref
-	matches := re.FindAllStringSubmatch(content, -1)
+// extractOccurrences finds each `uses: owner/repo@ref` occurrence along with positions.
+func extractOccurrences(content string) []ActionOccurrence {
+	re := regexp.MustCompile(`uses:\s+([^@/]+/[^@\s]+)@([^\s#]+)(\s*#[^\n]*)?`)
+	indices := re.FindAllStringSubmatchIndex(content, -1)
+	occurrences := make([]ActionOccurrence, 0, len(indices))
 
-	refs := make(map[string]string)
-	for _, m := range matches {
-		if len(m) >= 3 {
-			action := m[1]
-			ref := m[2]
-			refs[action] = ref
+	for _, idxs := range indices {
+		if len(idxs) < 6 {
+			continue
+		}
+		matchStart, matchEnd := idxs[0], idxs[1]
+		ownerRepoStart, ownerRepoEnd := idxs[2], idxs[3]
+		refStart, refEnd := idxs[4], idxs[5]
+		action := content[ownerRepoStart:ownerRepoEnd]
+		parts := strings.SplitN(action, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		owner, repo := parts[0], parts[1]
+		requestedRef := content[refStart:refEnd]
+		// '@' should be right after ownerRepoEnd
+		replaceStart := ownerRepoEnd
+		replaceEnd := matchEnd
+
+		line, col := computeLineCol(content, ownerRepoStart)
+
+		occurrences = append(occurrences, ActionOccurrence{
+			Owner:        owner,
+			Repo:         repo,
+			Action:       action,
+			RequestedRef: requestedRef,
+			MatchStart:   matchStart,
+			MatchEnd:     matchEnd,
+			ReplaceStart: replaceStart,
+			ReplaceEnd:   replaceEnd,
+			Line:         line,
+			Column:       col,
+		})
+	}
+	return occurrences
+}
+
+// computeLineCol returns 1-based line and column for the given byte offset.
+func computeLineCol(content string, offset int) (int, int) {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(content) {
+		offset = len(content)
+	}
+	line := 1
+	col := 1
+	lastNL := -1
+	for i := 0; i < offset; i++ {
+		if content[i] == '\n' {
+			line++
+			lastNL = i
 		}
 	}
-	return refs
+	col = offset - lastNL
+	return line, col
 }
 
 func isMovingMajorTag(ref string) bool {
@@ -504,141 +574,165 @@ func normalizeMajorRef(ref string) string {
 	return "v" + ref
 }
 
-func getActionInfos(ctx context.Context, client *github.Client, actions []string, requestedRefs map[string]string, expandMajor bool, policy UpdatePolicy) []ActionInfo {
-	var wg sync.WaitGroup
-	actionInfos := make([]ActionInfo, len(actions))
+// resolveActionForPolicy resolves a single occurrence according to the chosen policy.
+func resolveActionForPolicy(ctx context.Context, client *github.Client, owner, repo, requestedRef string, expandMajor bool, policy UpdatePolicy) (ActionInfo, error) {
 
-	for i, action := range actions {
-		wg.Add(1)
-		go func(idx int, actionName string) {
-			defer wg.Done()
-
-			parts := strings.Split(actionName, "/")
-			if len(parts) != 2 {
-				actionInfos[idx] = ActionInfo{Error: fmt.Errorf("invalid action format: %s", actionName)}
-				return
-			}
-
-			owner, repo := parts[0], parts[1]
-
-			requestedRef := requestedRefs[actionName]
-
-			// Policy: Requested
-			if policy == UpdatePolicyRequested {
-				if requestedRef != "" {
-					// If moving major, resolve to the commit that major points to
-					if isMovingMajorTag(requestedRef) {
-						candidates := []string{requestedRef}
-						if !strings.HasPrefix(requestedRef, "v") {
-							candidates = append(candidates, normalizeMajorRef(requestedRef))
-						}
-						var sha, tagName string
-						var err error
-						for _, c := range candidates {
-							sha, tagName, err = resolveTagToCommitSHA(ctx, client, owner, repo, c)
-							if err == nil {
-								break
-							}
-						}
-						if err == nil {
-							resolvedVersion := tagName
-							if expandMajor {
-								if fullTag, ferr := findFullSemverTagForMajorCommit(ctx, client, owner, repo, requestedRef, sha); ferr == nil && fullTag != "" {
-									resolvedVersion = fullTag
-								}
-							}
-							actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: resolvedVersion, SHA: sha}
-							fmt.Printf("  %s: %s -> %s\n", actionName, resolvedVersion, sha)
-							return
-						}
-					}
-					// Else try resolve as an exact tag
-					if sha, tagName, err := resolveTagToCommitSHA(ctx, client, owner, repo, requestedRef); err == nil {
-						actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}
-						fmt.Printf("  %s: %s -> %s\n", actionName, tagName, sha)
-						return
-					}
-					// If ref already a SHA, keep it
-					if isFullSHA(requestedRef) {
-						actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: requestedRef, SHA: requestedRef}
-						fmt.Printf("  %s: %s -> %s\n", actionName, requestedRef, requestedRef)
-						return
+	// Policy: Requested
+	if policy == UpdatePolicyRequested {
+		if requestedRef != "" {
+			// If moving major, resolve to the commit that major points to
+			if isMovingMajorTag(requestedRef) {
+				candidates := []string{requestedRef}
+				if !strings.HasPrefix(requestedRef, "v") {
+					candidates = append(candidates, normalizeMajorRef(requestedRef))
+				}
+				var sha, tagName string
+				var err error
+				for _, c := range candidates {
+					sha, tagName, err = resolveTagToCommitSHA(ctx, client, owner, repo, c)
+					if err == nil {
+						break
 					}
 				}
-				// Fall back to major policy if nothing matched
-			}
-
-			// Policy: Same major
-			if policy == UpdatePolicySameMajor && requestedRef != "" {
-				if major, ok := parseMajor(requestedRef); ok {
-					if sha, tagName, err := selectTagBySameMajor(ctx, client, owner, repo, major); err == nil {
-						actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}
-						fmt.Printf("  %s: %s -> %s\n", actionName, tagName, sha)
-						return
-					}
-				}
-				// If we failed to parse major or resolve, continue to major policy below
-			}
-
-			// Policy: Major (default) - latest release, else highest semver, else newest
-			release, resp, err := client.Repositories.GetLatestRelease(ctx, owner, repo)
-			if err == nil && release != nil {
-				version := release.GetTagName()
-				sha, tagName, err := resolveTagToCommitSHA(ctx, client, owner, repo, version)
 				if err == nil {
-					actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}
-					fmt.Printf("  %s: latest %s -> %s\n", actionName, tagName, sha)
-					return
+					resolvedVersion := tagName
+					if expandMajor {
+						if fullTag, ferr := findFullSemverTagForMajorCommit(ctx, client, owner, repo, requestedRef, sha); ferr == nil && fullTag != "" {
+							resolvedVersion = fullTag
+						}
+					}
+					return ActionInfo{Owner: owner, Repo: repo, Version: resolvedVersion, SHA: sha}, nil
 				}
-				// fall back to tags below if resolving tag failed
-			} else if resp != nil && resp.StatusCode != http.StatusNotFound {
-				// Unexpected error (not 404). Record and stop for this action.
-				fmt.Fprintf(os.Stderr, "%s Could not get latest release for %s: %v\n", bold("WARN:"), actionName, err)
-				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Error: err}
-				return
 			}
+			// Else try resolve as an exact tag
+			if sha, tagName, err := resolveTagToCommitSHA(ctx, client, owner, repo, requestedRef); err == nil {
+				return ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}, nil
+			}
+			// If ref already a SHA, keep it
+			if isFullSHA(requestedRef) {
+				return ActionInfo{Owner: owner, Repo: repo, Version: requestedRef, SHA: requestedRef}, nil
+			}
+		}
+		// Fall back to major policy if nothing matched
+	}
 
-			sha, tagName, err := selectTagBySemverOrNewest(ctx, client, owner, repo)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s Could not resolve tag for %s: %v\n", bold("WARN:"), actionName, err)
-				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Error: err}
+	// Policy: Same major
+	if policy == UpdatePolicySameMajor && requestedRef != "" {
+		if major, ok := parseMajor(requestedRef); ok {
+			if sha, tagName, err := selectTagBySameMajor(ctx, client, owner, repo, major); err == nil {
+				return ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}, nil
+			}
+		}
+		// If we failed to parse major or resolve, continue to major policy below
+	}
+
+	// Policy: Major (default) - latest release, else highest semver, else newest
+	release, resp, err := client.Repositories.GetLatestRelease(ctx, owner, repo)
+	if err == nil && release != nil {
+		version := release.GetTagName()
+		sha, tagName, err := resolveTagToCommitSHA(ctx, client, owner, repo, version)
+		if err == nil {
+			return ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}, nil
+		}
+		// fall back to tags below if resolving tag failed
+	} else if resp != nil && resp.StatusCode != http.StatusNotFound {
+		// Unexpected error (not 404). Record and stop for this action.
+		return ActionInfo{Owner: owner, Repo: repo, Error: err}, err
+	}
+
+	sha, tagName, err := selectTagBySemverOrNewest(ctx, client, owner, repo)
+	if err != nil {
+		return ActionInfo{Owner: owner, Repo: repo, Error: err}, err
+	}
+	return ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}, nil
+}
+
+// getActionInfosForOccurrences resolves each occurrence independently.
+func getActionInfosForOccurrences(ctx context.Context, client *github.Client, occurrences []ActionOccurrence, expandMajor bool, policy UpdatePolicy) []ActionInfo {
+	var wg sync.WaitGroup
+	infos := make([]ActionInfo, len(occurrences))
+
+	// Simple cache to avoid duplicate network calls when resolution is identical.
+	type cacheEntry struct{ info ActionInfo; ok bool }
+	cache := make(map[string]cacheEntry)
+	var mu sync.Mutex
+	cacheKey := func(owner, repo string, policy UpdatePolicy, requestedRef string) string {
+		return fmt.Sprintf("%s/%s|%d|%s", owner, repo, policy, requestedRef)
+	}
+
+	for i, occ := range occurrences {
+		wg.Add(1)
+		go func(idx int, o ActionOccurrence) {
+			defer wg.Done()
+			key := cacheKey(o.Owner, o.Repo, policy, o.RequestedRef)
+			mu.Lock()
+			if ce, exists := cache[key]; exists && ce.ok {
+				mu.Unlock()
+				infos[idx] = ce.info
 				return
 			}
-			actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}
-			fmt.Printf("  %s: %s -> %s\n", actionName, tagName, sha)
-		}(i, action)
+			mu.Unlock()
+
+			info, err := resolveActionForPolicy(ctx, client, o.Owner, o.Repo, o.RequestedRef, expandMajor, policy)
+			if err == nil {
+				fmt.Printf("  %s: %s -> %s\n", o.Action, info.Version, info.SHA)
+			}
+			infos[idx] = info
+
+			mu.Lock()
+			cache[key] = cacheEntry{info: info, ok: info.Error == nil}
+			mu.Unlock()
+		}(i, occ)
 	}
 
 	wg.Wait()
-
-	var validInfos []ActionInfo
-	for _, info := range actionInfos {
-		if info.Error == nil {
-			validInfos = append(validInfos, info)
-		}
-	}
-
-	return validInfos
+	return infos
 }
 
-func updateContent(content string, actionInfos []ActionInfo) string {
-	result := content
-
-	for _, info := range actionInfos {
-		if info.Error != nil {
+func updateContent(content string, occurrences []ActionOccurrence, actionInfos []ActionInfo) string {
+	// Build replacements for occurrences with successful resolutions
+	type repl struct{
+		start int
+		end   int
+		text  string
+	}
+	repls := make([]repl, 0)
+	for i, occ := range occurrences {
+		if i >= len(actionInfos) {
 			continue
 		}
-
-		actionName := fmt.Sprintf("%s/%s", info.Owner, info.Repo)
-
-		pattern := fmt.Sprintf(`(uses:\s+%s)@[^\s]*(\s*#[^\n]*)?`, regexp.QuoteMeta(actionName))
-		replacement := fmt.Sprintf("${1}@%s # %s", info.SHA, info.Version)
-
-		re := regexp.MustCompile(pattern)
-		result = re.ReplaceAllString(result, replacement)
+		info := actionInfos[i]
+		if info.Error != nil || info.SHA == "" || occ.ReplaceStart < 0 || occ.ReplaceEnd <= occ.ReplaceStart {
+			continue
+		}
+		// If the target SHA equals the current ref, skip
+		if occ.RequestedRef == info.SHA {
+			continue
+		}
+		repls = append(repls, repl{
+			start: occ.ReplaceStart,
+			end:   occ.ReplaceEnd,
+			text:  fmt.Sprintf("@%s # %s", info.SHA, info.Version),
+		})
 	}
-
-	return result
+	if len(repls) == 0 {
+		return content
+	}
+	// Sort by start ascending to rebuild content
+	sort.Slice(repls, func(i, j int) bool { return repls[i].start < repls[j].start })
+	var b strings.Builder
+	prev := 0
+	for _, r := range repls {
+		if r.start < prev {
+			// overlapping/unsorted; skip defensively
+			continue
+		}
+		b.WriteString(content[prev:r.start])
+		b.WriteString(r.text)
+		prev = r.end
+	}
+	b.WriteString(content[prev:])
+	return b.String()
 }
 
 // Diff preview removed
