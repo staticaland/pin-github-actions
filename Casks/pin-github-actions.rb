@@ -2,7 +2,7 @@
 cask "pin-github-actions" do
   desc ""
   homepage ""
-  version "1.5.0"
+  version "1.6.0"
 
   livecheck do
     skip "Auto-generated on release."
@@ -12,23 +12,23 @@ cask "pin-github-actions" do
 
   on_macos do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.5.0/pin-github-actions_1.5.0_darwin_amd64.tar.gz"
-      sha256 "db62f6397ed705ced47e90d4b675c4ea923d8f6923d6edaa447d708ccad10ce3"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.6.0/pin-github-actions_1.6.0_darwin_amd64.tar.gz"
+      sha256 "b20d2658c7aa8a47394015466c9c563b78e0a7000769162abbf567e3c2e76bbe"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.5.0/pin-github-actions_1.5.0_darwin_arm64.tar.gz"
-      sha256 "16e989929219c2126acb1d15f954abace17ca08d0979de3bcb9a7be2c11abbcd"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.6.0/pin-github-actions_1.6.0_darwin_arm64.tar.gz"
+      sha256 "5d852f6b6e2ddd196a93669eb1c3f1edaea6291ffea478c4d81285ee5ec0ea5e"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.5.0/pin-github-actions_1.5.0_linux_amd64.tar.gz"
-      sha256 "6083f59f8c1f9032bece80c863698c8909cf216845cd1d8ce540625bc4772c9f"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.6.0/pin-github-actions_1.6.0_linux_amd64.tar.gz"
+      sha256 "3d9853b8451f3ef7989df67e1b0c452e65221beb00712a589181061d169e0e97"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.5.0/pin-github-actions_1.5.0_linux_arm64.tar.gz"
-      sha256 "ba10e5034bb9a3ea623c95d3096ca1c4eccd843964dd9599b1100a8020b1c37d"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.6.0/pin-github-actions_1.6.0_linux_arm64.tar.gz"
+      sha256 "589acca73f7f62fd1e579382c9a4fcb7790973257549839bb8789036b0bba75c"
     end
   end
 
