@@ -464,6 +464,8 @@ func findFullSemverTagForMajorCommit(ctx context.Context, client *github.Client,
 		return "", fmt.Errorf("not a major ref: %s", majorRef)
 	}
 
+	// First pass: collect candidate tags by major and compare lightweight tag SHAs directly
+	candidates := make([]string, 0, 100)
 	page := 1
 	for {
 		opts := &github.ListOptions{PerPage: 100, Page: page}
@@ -480,18 +482,29 @@ func findFullSemverTagForMajorCommit(ctx context.Context, client *github.Client,
 			if int(v.Major()) != majorInt {
 				continue
 			}
-			sha, _, resolveErr := resolveTagToCommitSHA(ctx, client, owner, repo, name)
-			if resolveErr != nil {
-				continue
-			}
-			if sha == resolvedCommitSHA {
-				return name, nil
+			candidates = append(candidates, name)
+			// Compare the SHA provided by ListTags (lightweight tags) before dereferencing annotated ones
+			if t.GetCommit() != nil {
+				if sha := t.GetCommit().GetSHA(); sha != "" && sha == resolvedCommitSHA {
+					return name, nil
+				}
 			}
 		}
 		if resp == nil || resp.NextPage == 0 {
 			break
 		}
 		page = resp.NextPage
+	}
+
+	// Second pass: dereference annotated tags only
+	for _, name := range candidates {
+		sha, _, resolveErr := resolveTagToCommitSHA(ctx, client, owner, repo, name)
+		if resolveErr != nil {
+			continue
+		}
+		if sha == resolvedCommitSHA {
+			return name, nil
+		}
 	}
 	return "", fmt.Errorf("no matching full tag found for %s", majorRef)
 }
