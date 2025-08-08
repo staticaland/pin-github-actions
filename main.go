@@ -446,10 +446,13 @@ func selectTagBySameMajor(ctx context.Context, client *github.Client, owner, rep
 		// Early stop heuristic: if we've already found at least one matching tag in
 		// earlier pages, and the current page has zero matches, break out assuming
 		// there won't be any more matches further in the past.
-		if !hadMatchThisPage && bestVersion != nil {
+		if !hadMatchThisPage && foundMatchInPriorPages {
 			break
 		}
 
+		if hadMatchThisPage {
+			foundMatchInPriorPages = true
+		}
 		if resp == nil || resp.NextPage == 0 {
 			break
 		}
