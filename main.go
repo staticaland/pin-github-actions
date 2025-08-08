@@ -43,6 +43,57 @@ func bold(text string) string {
 	return "\u001b[1m" + text + "\u001b[0m"
 }
 
+// prettyRef formats a ref for human-friendly output.
+// - If empty, returns (none)
+// - If it looks like a full 40-char SHA, abbreviates to 12 chars with an ellipsis
+// - Otherwise returns the ref unchanged
+func prettyRef(ref string) string {
+	if strings.TrimSpace(ref) == "" {
+		return "(none)"
+	}
+	if isFullSHA(ref) {
+		return ref[:12] + "…"
+	}
+	return ref
+}
+
+func isFullSHA(s string) bool {
+	if len(s) != 40 {
+		return false
+	}
+	for i := 0; i < 40; i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+// printPlannedChanges prints a concise from → to mapping for each action that will change.
+func printPlannedChanges(requestedRefs map[string]string, actionInfos []ActionInfo) {
+	fmt.Println(bold("Planned updates:"))
+	hadChange := false
+	for _, info := range actionInfos {
+		if info.Error != nil {
+			continue
+		}
+		action := fmt.Sprintf("%s/%s", info.Owner, info.Repo)
+		oldRef := requestedRefs[action]
+		newRef := info.SHA
+		if oldRef == newRef {
+			// No change for this action; skip in the plan
+			continue
+		}
+		// Example: "  - actions/checkout: v4 → 5e2f1c1…  (v4.2.2)"
+		fmt.Printf("  - %s: %s → %s  (%s)\n", action, prettyRef(oldRef), prettyRef(newRef), info.Version)
+		hadChange = true
+	}
+	if !hadChange {
+		fmt.Println("  No changes needed. All actions already pinned to the latest commits.")
+	}
+}
+
 func getGitHubToken() (string, error) {
 	if token := os.Getenv("GH_TOKEN"); token != "" {
 		return token, nil
@@ -156,7 +207,12 @@ func main() {
 
 	updatedContent := updateContent(string(content), actionInfos)
 
+	// Always show planned updates for a clear from → to view
+	fmt.Println()
+	printPlannedChanges(requestedRefs, actionInfos)
+
 	if string(content) == updatedContent {
+		fmt.Println()
 		fmt.Println(bold("Up to date:"), "All actions are already pinned to the latest versions.")
 		return
 	}
