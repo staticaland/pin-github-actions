@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -157,10 +156,6 @@ func main() {
 		fmt.Println(bold("Up to date:"), "All actions are already pinned to the latest versions.")
 		return
 	}
-
-	fmt.Println()
-	fmt.Println(bold("Proposed changes:"))
-	showDiff(workflowFile, string(content), updatedContent)
 
 	fmt.Println()
 	if !promptConfirmation(bold("Apply changes?") + " [y/N] ") {
@@ -399,38 +394,7 @@ func updateContent(content string, actionInfos []ActionInfo) string {
 	return result
 }
 
-func showDiff(filename, oldContent, newContent string) {
-	oldFile, err := os.CreateTemp("", "old-*.yml")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating temp file: %v\n", err)
-		return
-	}
-	defer os.Remove(oldFile.Name())
-	defer oldFile.Close()
-
-	newFile, err := os.CreateTemp("", "new-*.yml")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating temp file: %v\n", err)
-		return
-	}
-	defer os.Remove(newFile.Name())
-	defer newFile.Close()
-
-	oldFile.WriteString(oldContent)
-	newFile.WriteString(newContent)
-	oldFile.Close()
-	newFile.Close()
-
-	cmd := exec.Command("diff", "-u", oldFile.Name(), newFile.Name())
-	output, _ := cmd.Output()
-
-	diffLines := strings.Split(string(output), "\n")
-	if len(diffLines) > 2 {
-		diffLines[0] = "--- " + filename + ".old"
-		diffLines[1] = "+++ " + filename
-		fmt.Println(strings.Join(diffLines, "\n"))
-	}
-}
+// Diff preview removed
 
 func promptConfirmation(prompt string) bool {
 	fmt.Print(prompt)
