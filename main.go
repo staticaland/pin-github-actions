@@ -39,6 +39,46 @@ type GitHubHosts struct {
 	} `yaml:"github.com"`
 }
 
+// UpdatePolicy defines how versions should be selected relative to the requested reference.
+// - UpdatePolicyMajor: bump to the latest available version across all majors (default)
+// - UpdatePolicySameMajor: stay within the requested major, pick the latest tag for that major
+// - UpdatePolicyRequested: pin exactly the requested ref (useful for moving majors like v4)
+type UpdatePolicy int
+
+const (
+	UpdatePolicyMajor UpdatePolicy = iota
+	UpdatePolicySameMajor
+	UpdatePolicyRequested
+)
+
+type Config struct{}
+
+func parsePolicy(policyStr string) (UpdatePolicy, error) {
+	switch strings.ToLower(strings.TrimSpace(policyStr)) {
+	case "", "major", "latest-major", "latest":
+		return UpdatePolicyMajor, nil
+	case "same-major", "stay-major", "minor", "patch":
+		// We treat minor/patch as staying within the same major for this tool's scope
+		return UpdatePolicySameMajor, nil
+	case "requested", "exact", "pin-requested":
+		return UpdatePolicyRequested, nil
+	default:
+		return UpdatePolicyMajor, fmt.Errorf("unknown policy: %s", policyStr)
+	}
+}
+
+func loadConfig(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
 func bold(text string) string {
 	return "\u001b[1m" + text + "\u001b[0m"
 }
@@ -72,7 +112,7 @@ func isFullSHA(s string) bool {
 
 // printPlannedChanges prints a concise from → to mapping for each action that will change.
 func printPlannedChanges(requestedRefs map[string]string, actionInfos []ActionInfo) {
-	fmt.Println(bold("Planned updates:"))
+	fmt.Println(bold("Planned updates:\n"))
 	hadChange := false
 	for _, info := range actionInfos {
 		if info.Error != nil {
@@ -149,6 +189,7 @@ func main() {
 	// Toggle: when a moving major tag (e.g., v4 or 4) is detected, expand the displayed version
 	// comment to the full semver tag (e.g., v4.2.2) that the major tag currently points to.
 	expandMajorFlag := flag.Bool("expand-major", false, "Expand moving major tags (vN or N) to full semver in the version comment")
+	policyFlag := flag.String("policy", "major", "Update policy: major (default), same-major, requested")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -163,7 +204,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("%s %s\n", bold("Scanning workflow"), workflowFile)
+	fmt.Printf("\n%s %s\n\n", bold("Scanning workflow"), workflowFile)
 
 	content, err := os.ReadFile(workflowFile)
 	if err != nil {
@@ -178,13 +219,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println(bold("Discovered actions:"))
+	fmt.Println(bold("Discovered actions:\n"))
 	for _, action := range actions {
 		fmt.Printf("  - %s\n", action)
 	}
 	fmt.Println()
 
-	fmt.Println(bold("Resolving latest versions and SHAs (parallel)..."))
+	// Determine effective update policy (default to latest major) from flag only
+	effectivePolicy := UpdatePolicyMajor
+	if p, err := parsePolicy(*policyFlag); err == nil {
+		effectivePolicy = p
+	}
+
+	fmt.Println(bold("Resolving latest versions and SHAs (parallel)...\n"))
 
 	token, err := getGitHubToken()
 	if err != nil {
@@ -195,7 +242,7 @@ func main() {
 	ctx := context.Background()
 	client := github.NewTokenClient(ctx, token)
 
-	actionInfos := getActionInfos(ctx, client, actions, requestedRefs, *expandMajorFlag)
+	actionInfos := getActionInfos(ctx, client, actions, requestedRefs, *expandMajorFlag, effectivePolicy)
 
 	if len(actionInfos) == 0 {
 		fmt.Println(bold("No action information retrieved."))
@@ -213,13 +260,13 @@ func main() {
 
 	if string(content) == updatedContent {
 		fmt.Println()
-		fmt.Println(bold("Up to date:"), "All actions are already pinned to the latest versions.")
+		fmt.Println(bold("\nUp to date:"), "All actions are already pinned to the latest versions.")
 		return
 	}
 
 	fmt.Println()
 	if !promptConfirmation(bold("Apply changes?") + " [y/N] ") {
-		fmt.Println(bold("No changes applied."))
+		fmt.Println(bold("\nNo changes applied."))
 		return
 	}
 
@@ -229,9 +276,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("%s %s\n", bold("Updated file"), workflowFile)
+	fmt.Printf("%s %s\n", bold("\nUpdated file"), workflowFile)
 	fmt.Println()
-	fmt.Println(bold("Pinned actions:"))
+	fmt.Println(bold("Pinned actions:\n"))
 	for _, info := range actionInfos {
 		if info.Error == nil {
 			fmt.Printf("  %s/%s@%s # %s\n", info.Owner, info.Repo, info.SHA, info.Version)
@@ -344,6 +391,65 @@ func selectTagBySemverOrNewest(ctx context.Context, client *github.Client, owner
 	return sha, tagName, nil
 }
 
+// parseMajor extracts the major version number from a ref string.
+// Accepts forms like "v4", "4", or full semver tags like "v4.2.2".
+func parseMajor(ref string) (int, bool) {
+	if isMovingMajorTag(ref) {
+		r := strings.TrimPrefix(ref, "v")
+		v, err := strconv.Atoi(r)
+		if err != nil {
+			return 0, false
+		}
+		return v, true
+	}
+	if v, err := semver.NewVersion(ref); err == nil {
+		return int(v.Major()), true
+	}
+	return 0, false
+}
+
+// selectTagBySameMajor finds the highest semver tag within the specified major.
+func selectTagBySameMajor(ctx context.Context, client *github.Client, owner, repo string, major int) (string, string, error) {
+	page := 1
+	var bestVersion *semver.Version
+	var bestTagName string
+
+	for {
+		opts := &github.ListOptions{PerPage: 100, Page: page}
+		tags, resp, err := client.Repositories.ListTags(ctx, owner, repo, opts)
+		if err != nil {
+			return "", "", err
+		}
+		for _, t := range tags {
+			name := t.GetName()
+			v, parseErr := semver.NewVersion(name)
+			if parseErr != nil {
+				continue
+			}
+			if int(v.Major()) != major {
+				continue
+			}
+			if bestVersion == nil || v.GreaterThan(bestVersion) {
+				bestVersion = v
+				bestTagName = name
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		page = resp.NextPage
+	}
+
+	if bestVersion == nil || bestTagName == "" {
+		return "", "", fmt.Errorf("no tags found for major %d", major)
+	}
+	sha, tagName, err := resolveTagToCommitSHA(ctx, client, owner, repo, bestTagName)
+	if err != nil {
+		return "", "", err
+	}
+	return sha, tagName, nil
+}
+
 // findFullSemverTagForMajorCommit attempts to find the exact full semver tag (e.g., v4.2.2)
 // that currently corresponds to the provided moving major ref (e.g., v4 or 4), by matching
 // the resolved commit SHA of the major tag against all semver tags with the same major.
@@ -398,7 +504,7 @@ func normalizeMajorRef(ref string) string {
 	return "v" + ref
 }
 
-func getActionInfos(ctx context.Context, client *github.Client, actions []string, requestedRefs map[string]string, expandMajor bool) []ActionInfo {
+func getActionInfos(ctx context.Context, client *github.Client, actions []string, requestedRefs map[string]string, expandMajor bool, policy UpdatePolicy) []ActionInfo {
 	var wg sync.WaitGroup
 	actionInfos := make([]ActionInfo, len(actions))
 
@@ -415,36 +521,66 @@ func getActionInfos(ctx context.Context, client *github.Client, actions []string
 
 			owner, repo := parts[0], parts[1]
 
-			// If the user requested a moving major tag like v4, resolve that directly
-			if ref, ok := requestedRefs[actionName]; ok && isMovingMajorTag(ref) {
-				// Try exact ref, then try normalized with 'v'
-				candidates := []string{ref}
-				if !strings.HasPrefix(ref, "v") {
-					candidates = append(candidates, normalizeMajorRef(ref))
-				}
-				var sha, tagName string
-				var err error
-				for _, c := range candidates {
-					sha, tagName, err = resolveTagToCommitSHA(ctx, client, owner, repo, c)
-					if err == nil {
-						break
-					}
-				}
-				if err == nil {
-					resolvedVersion := tagName
-					if expandMajor {
-						if fullTag, ferr := findFullSemverTagForMajorCommit(ctx, client, owner, repo, ref, sha); ferr == nil && fullTag != "" {
-							resolvedVersion = fullTag
+			requestedRef := requestedRefs[actionName]
+
+			// Policy: Requested
+			if policy == UpdatePolicyRequested {
+				if requestedRef != "" {
+					// If moving major, resolve to the commit that major points to
+					if isMovingMajorTag(requestedRef) {
+						candidates := []string{requestedRef}
+						if !strings.HasPrefix(requestedRef, "v") {
+							candidates = append(candidates, normalizeMajorRef(requestedRef))
+						}
+						var sha, tagName string
+						var err error
+						for _, c := range candidates {
+							sha, tagName, err = resolveTagToCommitSHA(ctx, client, owner, repo, c)
+							if err == nil {
+								break
+							}
+						}
+						if err == nil {
+							resolvedVersion := tagName
+							if expandMajor {
+								if fullTag, ferr := findFullSemverTagForMajorCommit(ctx, client, owner, repo, requestedRef, sha); ferr == nil && fullTag != "" {
+									resolvedVersion = fullTag
+								}
+							}
+							actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: resolvedVersion, SHA: sha}
+							fmt.Printf("  %s: %s -> %s\n", actionName, resolvedVersion, sha)
+							return
 						}
 					}
-					actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: resolvedVersion, SHA: sha}
-					fmt.Printf("  %s: %s -> %s\n", actionName, resolvedVersion, sha)
-					return
+					// Else try resolve as an exact tag
+					if sha, tagName, err := resolveTagToCommitSHA(ctx, client, owner, repo, requestedRef); err == nil {
+						actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}
+						fmt.Printf("  %s: %s -> %s\n", actionName, tagName, sha)
+						return
+					}
+					// If ref already a SHA, keep it
+					if isFullSHA(requestedRef) {
+						actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: requestedRef, SHA: requestedRef}
+						fmt.Printf("  %s: %s -> %s\n", actionName, requestedRef, requestedRef)
+						return
+					}
 				}
-				// If failed to resolve requested moving tag, continue to normal resolution below
+				// Fall back to major policy if nothing matched
 			}
 
-			// Try latest release first
+			// Policy: Same major
+			if policy == UpdatePolicySameMajor && requestedRef != "" {
+				if major, ok := parseMajor(requestedRef); ok {
+					if sha, tagName, err := selectTagBySameMajor(ctx, client, owner, repo, major); err == nil {
+						actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}
+						fmt.Printf("  %s: %s -> %s\n", actionName, tagName, sha)
+						return
+					}
+				}
+				// If we failed to parse major or resolve, continue to major policy below
+			}
+
+			// Policy: Major (default) - latest release, else highest semver, else newest
 			release, resp, err := client.Repositories.GetLatestRelease(ctx, owner, repo)
 			if err == nil && release != nil {
 				version := release.GetTagName()
@@ -462,7 +598,6 @@ func getActionInfos(ctx context.Context, client *github.Client, actions []string
 				return
 			}
 
-			// Fallback to tags: highest semver, else newest
 			sha, tagName, err := selectTagBySemverOrNewest(ctx, client, owner, repo)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%s Could not resolve tag for %s: %v\n", bold("WARN:"), actionName, err)
