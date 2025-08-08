@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	semver "github.com/Masterminds/semver/v3"
 	"github.com/google/go-github/v57/github"
 	"github.com/zalando/go-keyring"
 	"gopkg.in/yaml.v3"
@@ -116,6 +118,7 @@ func main() {
 	}
 
 	actions := extractActions(string(content))
+	requestedRefs := extractActionRefs(string(content))
 	if len(actions) == 0 {
 		fmt.Printf("%s No GitHub Actions references found in %s\n", bold("No actions:"), workflowFile)
 		os.Exit(1)
@@ -138,7 +141,7 @@ func main() {
 	ctx := context.Background()
 	client := github.NewTokenClient(ctx, token)
 
-	actionInfos := getActionInfos(ctx, client, actions)
+	actionInfos := getActionInfos(ctx, client, actions, requestedRefs)
 
 	if len(actionInfos) == 0 {
 		fmt.Println(bold("No action information retrieved."))
@@ -201,7 +204,100 @@ func extractActions(content string) []string {
 	return actions
 }
 
-func getActionInfos(ctx context.Context, client *github.Client, actions []string) []ActionInfo {
+func extractActionRefs(content string) map[string]string {
+	// Matches: uses: owner/repo@ref (ignores trailing comments)
+	re := regexp.MustCompile(`uses:\s+([^@/]+/[^@\s]+)@([^\s#]+)`) // group1: owner/repo, group2: ref
+	matches := re.FindAllStringSubmatch(content, -1)
+
+	refs := make(map[string]string)
+	for _, m := range matches {
+		if len(m) >= 3 {
+			action := m[1]
+			ref := m[2]
+			refs[action] = ref
+		}
+	}
+	return refs
+}
+
+func isMovingMajorTag(ref string) bool {
+	// v4 or 4
+	re := regexp.MustCompile(`^v?\d+$`)
+	return re.MatchString(ref)
+}
+
+func resolveTagToCommitSHA(ctx context.Context, client *github.Client, owner, repo, tagName string) (string, string, error) {
+	// Resolve a tag ref to a commit SHA, dereferencing annotated tags
+	ref, resp, err := client.Git.GetRef(ctx, owner, repo, "tags/"+tagName)
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return "", "", fmt.Errorf("tag not found: %s", tagName)
+		}
+		return "", "", err
+	}
+	sha := ref.GetObject().GetSHA()
+	if ref.GetObject().GetType() == "tag" {
+		tagObj, _, tagErr := client.Git.GetTag(ctx, owner, repo, sha)
+		if tagErr == nil && tagObj != nil && tagObj.GetObject().GetType() == "commit" && tagObj.GetObject().GetSHA() != "" {
+			sha = tagObj.GetObject().GetSHA()
+		}
+	}
+	if sha == "" {
+		return "", "", fmt.Errorf("no SHA found for tag %s", tagName)
+	}
+	return sha, tagName, nil
+}
+
+func selectTagBySemverOrNewest(ctx context.Context, client *github.Client, owner, repo string) (string, string, error) {
+	// List tags and pick highest semver; if none parsable, pick newest (first page ordering)
+	opts := &github.ListOptions{PerPage: 100}
+	tags, _, err := client.Repositories.ListTags(ctx, owner, repo, opts)
+	if err != nil || len(tags) == 0 {
+		if err == nil {
+			err = fmt.Errorf("no tags found")
+		}
+		return "", "", err
+	}
+
+	var bestVersion *semver.Version
+	var bestTagName string
+
+	for _, t := range tags {
+		name := t.GetName()
+		v, parseErr := semver.NewVersion(name)
+		if parseErr != nil {
+			continue
+		}
+		if bestVersion == nil || v.GreaterThan(bestVersion) {
+			bestVersion = v
+			bestTagName = name
+		}
+	}
+
+	chosen := ""
+	if bestVersion != nil {
+		chosen = bestTagName
+	} else {
+		// Fallback to newest tag as returned by API (assumed newest first)
+		chosen = tags[0].GetName()
+	}
+
+	sha, tagName, err := resolveTagToCommitSHA(ctx, client, owner, repo, chosen)
+	if err != nil {
+		return "", "", err
+	}
+	return sha, tagName, nil
+}
+
+func normalizeMajorRef(ref string) string {
+	// Ensure we try with leading 'v' first; many repos use that form
+	if strings.HasPrefix(ref, "v") {
+		return ref
+	}
+	return "v" + ref
+}
+
+func getActionInfos(ctx context.Context, client *github.Client, actions []string, requestedRefs map[string]string) []ActionInfo {
 	var wg sync.WaitGroup
 	actionInfos := make([]ActionInfo, len(actions))
 
@@ -218,54 +314,56 @@ func getActionInfos(ctx context.Context, client *github.Client, actions []string
 
 			owner, repo := parts[0], parts[1]
 
-			release, _, err := client.Repositories.GetLatestRelease(ctx, owner, repo)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s Could not get latest version for %s: %v\n", bold("WARN:"), actionName, err)
-				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Error: err}
-				return
-			}
-
-			version := release.GetTagName()
-			if version == "" {
-				err := fmt.Errorf("no tag name found for latest release")
-				fmt.Fprintf(os.Stderr, "%s %s\n", bold("WARN:"), err)
-				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Error: err}
-				return
-			}
-
-			ref, _, err := client.Git.GetRef(ctx, owner, repo, "tags/"+version)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s Could not get SHA for %s@%s: %v\n", bold("WARN:"), actionName, version, err)
-				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: version, Error: err}
-				return
-			}
-
-			sha := ref.GetObject().GetSHA()
-			// Dereference annotated tags to the underlying commit SHA.
-			if ref.GetObject().GetType() == "tag" {
-				tagObj, _, tagErr := client.Git.GetTag(ctx, owner, repo, sha)
-				if tagErr != nil {
-					// Keep original sha but warn
-					fmt.Fprintf(os.Stderr, "%s Could not dereference annotated tag for %s@%s: %v\n", bold("WARN:"), actionName, version, tagErr)
-				} else if tagObj != nil && tagObj.GetObject().GetType() == "commit" && tagObj.GetObject().GetSHA() != "" {
-					sha = tagObj.GetObject().GetSHA()
+			// If the user requested a moving major tag like v4, resolve that directly
+			if ref, ok := requestedRefs[actionName]; ok && isMovingMajorTag(ref) {
+				// Try exact ref, then try normalized with 'v'
+				candidates := []string{ref}
+				if !strings.HasPrefix(ref, "v") {
+					candidates = append(candidates, normalizeMajorRef(ref))
 				}
+				var sha, tagName string
+				var err error
+				for _, c := range candidates {
+					sha, tagName, err = resolveTagToCommitSHA(ctx, client, owner, repo, c)
+					if err == nil {
+						break
+					}
+				}
+				if err == nil {
+					actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}
+					fmt.Printf("  %s: %s -> %s\n", actionName, tagName, sha)
+					return
+				}
+				// If failed to resolve requested moving tag, continue to normal resolution below
 			}
-			if sha == "" {
-				err := fmt.Errorf("no SHA found for tag %s", version)
-				fmt.Fprintf(os.Stderr, "%s %s\n", bold("WARN:"), err)
-				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: version, Error: err}
+
+			// Try latest release first
+			release, resp, err := client.Repositories.GetLatestRelease(ctx, owner, repo)
+			if err == nil && release != nil {
+				version := release.GetTagName()
+				sha, tagName, err := resolveTagToCommitSHA(ctx, client, owner, repo, version)
+				if err == nil {
+					actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}
+					fmt.Printf("  %s: latest %s -> %s\n", actionName, tagName, sha)
+					return
+				}
+				// fall back to tags below if resolving tag failed
+			} else if resp != nil && resp.StatusCode != http.StatusNotFound {
+				// Unexpected error (not 404). Record and stop for this action.
+				fmt.Fprintf(os.Stderr, "%s Could not get latest release for %s: %v\n", bold("WARN:"), actionName, err)
+				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Error: err}
 				return
 			}
 
-			actionInfos[idx] = ActionInfo{
-				Owner:   owner,
-				Repo:    repo,
-				Version: version,
-				SHA:     sha,
+			// Fallback to tags: highest semver, else newest
+			sha, tagName, err := selectTagBySemverOrNewest(ctx, client, owner, repo)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s Could not resolve tag for %s: %v\n", bold("WARN:"), actionName, err)
+				actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Error: err}
+				return
 			}
-
-			fmt.Printf("  %s: latest %s -> %s\n", actionName, version, sha)
+			actionInfos[idx] = ActionInfo{Owner: owner, Repo: repo, Version: tagName, SHA: sha}
+			fmt.Printf("  %s: %s -> %s\n", actionName, tagName, sha)
 		}(i, action)
 	}
 
