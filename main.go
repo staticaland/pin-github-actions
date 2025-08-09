@@ -716,7 +716,7 @@ func getActionInfosForOccurrences(ctx context.Context, client *github.Client, oc
 
 func updateContent(content string, occurrences []ActionOccurrence, actionInfos []ActionInfo) string {
 	// Build replacements for occurrences with successful resolutions
-	type repl struct{
+	type repl struct {
 		start int
 		end   int
 		text  string
