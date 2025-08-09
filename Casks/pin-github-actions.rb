@@ -2,7 +2,7 @@
 cask "pin-github-actions" do
   desc ""
   homepage ""
-  version "1.6.0"
+  version "1.7.0"
 
   livecheck do
     skip "Auto-generated on release."
@@ -12,23 +12,23 @@ cask "pin-github-actions" do
 
   on_macos do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.6.0/pin-github-actions_1.6.0_darwin_amd64.tar.gz"
-      sha256 "b20d2658c7aa8a47394015466c9c563b78e0a7000769162abbf567e3c2e76bbe"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.7.0/pin-github-actions_1.7.0_darwin_amd64.tar.gz"
+      sha256 "3dacb300dd2797860189f197d18aabe97b7b6ee44bf2f4909fe43e142283e525"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.6.0/pin-github-actions_1.6.0_darwin_arm64.tar.gz"
-      sha256 "5d852f6b6e2ddd196a93669eb1c3f1edaea6291ffea478c4d81285ee5ec0ea5e"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.7.0/pin-github-actions_1.7.0_darwin_arm64.tar.gz"
+      sha256 "5b94e907bb42daaec44b21b9efef5e61eae6ba9c6f4de4baa1e4a1ffa2a05cc6"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.6.0/pin-github-actions_1.6.0_linux_amd64.tar.gz"
-      sha256 "3d9853b8451f3ef7989df67e1b0c452e65221beb00712a589181061d169e0e97"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.7.0/pin-github-actions_1.7.0_linux_amd64.tar.gz"
+      sha256 "d1053cc3f18cecd8741d8e2ecae28bd4505a55c4ed1e0b69e5a8ca617def0eeb"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.6.0/pin-github-actions_1.6.0_linux_arm64.tar.gz"
-      sha256 "589acca73f7f62fd1e579382c9a4fcb7790973257549839bb8789036b0bba75c"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.7.0/pin-github-actions_1.7.0_linux_arm64.tar.gz"
+      sha256 "ba0a7cb37ac3c16b0b7d40c7274e33197f088ec72e7b5880d38a3f618fc1ca2c"
     end
   end
 
