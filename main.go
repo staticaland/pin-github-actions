@@ -134,12 +134,37 @@ func isFullSHA(s string) bool {
 func printPlannedChanges(occurrences []ActionOccurrence, actionInfos []ActionInfo) {
 	fmt.Println(bold("Planned updates:\n"))
 	hadChange := false
-	for i, occ := range occurrences {
-		if i >= len(actionInfos) {
-			continue
+
+	// Build a map from a unique key to ActionInfo for fast lookup.
+	type actionKey struct {
+		Owner string
+		Repo  string
+		Line  int
+		Column int
+	}
+	infoMap := make(map[actionKey]ActionInfo, len(actionInfos))
+	for _, info := range actionInfos {
+		// Only add if no error and has identifying info
+		if info.Error == nil {
+			key := actionKey{
+				Owner:  info.Owner,
+				Repo:   info.Repo,
+				Line:   info.Line,
+				Column: info.Column,
+			}
+			infoMap[key] = info
 		}
-		info := actionInfos[i]
-		if info.Error != nil {
+	}
+
+	for _, occ := range occurrences {
+		key := actionKey{
+			Owner:  occ.Owner,
+			Repo:   occ.Repo,
+			Line:   occ.Line,
+			Column: occ.Column,
+		}
+		info, ok := infoMap[key]
+		if !ok {
 			continue
 		}
 		oldRef := occ.RequestedRef
