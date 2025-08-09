@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.8.0](https://github.com/staticaland/pin-github-actions/compare/v1.7.0...v1.8.0) (2025-08-09)
+
+
+### Features
+
+* Add --yes flag to apply updates non-interactively ([#13](https://github.com/staticaland/pin-github-actions/issues/13)) ([3b437b1](https://github.com/staticaland/pin-github-actions/commit/3b437b106a616e4d7f830d4630e1a637cd6da30d))
+* better message ordering ([3515fd2](https://github.com/staticaland/pin-github-actions/commit/3515fd2f98078b9c81a24bb06edbad52aa274d8e))
+* output ordering ([69a7ea0](https://github.com/staticaland/pin-github-actions/commit/69a7ea0e1d5d8f7ee597e665f6d00d7b9f747616))
+* Track action occurrences by location ([#9](https://github.com/staticaland/pin-github-actions/issues/9)) ([4950f16](https://github.com/staticaland/pin-github-actions/commit/4950f1613ca6efa6b74e7d5180221fc7965207a2))
+
 ## [1.7.0](https://github.com/staticaland/pin-github-actions/compare/v1.6.0...v1.7.0) (2025-08-08)
 
 
