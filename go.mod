@@ -3,7 +3,7 @@ module github.com/staticaland/pin-github-actions
 go 1.21
 
 require (
-	github.com/Masterminds/semver/v3 v3.2.1
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/google/go-github/v57 v57.0.0
 	github.com/zalando/go-keyring v0.2.6
 	gopkg.in/yaml.v3 v3.0.1
