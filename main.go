@@ -722,11 +722,11 @@ func updateContent(content string, occurrences []ActionOccurrence, actionInfos [
 		text  string
 	}
 	repls := make([]repl, 0)
-	for i, occ := range occurrences {
-		if i >= len(actionInfos) {
+	for _, occ := range occurrences {
+		info, ok := actionInfos[occurrenceKey(occ)]
+		if !ok {
 			continue
 		}
-		info := actionInfos[i]
 		if info.Error != nil || info.SHA == "" || occ.ReplaceStart < 0 || occ.ReplaceEnd <= occ.ReplaceStart {
 			continue
 		}
