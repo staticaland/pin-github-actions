@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.0](https://github.com/staticaland/pin-github-actions/compare/v1.9.0...v1.10.0) (2025-08-09)
+
+
+### Features
+
+* fix mistake ([bec86b1](https://github.com/staticaland/pin-github-actions/commit/bec86b1b0a994b4be67156fe1f06a43f551750a2))
+* trigger release ([80190f1](https://github.com/staticaland/pin-github-actions/commit/80190f16f0db77b96dcd5204dfb49980236bc00a))
+
 ## [1.9.0](https://github.com/staticaland/pin-github-actions/compare/v1.8.0...v1.9.0) (2025-08-09)
 
 
