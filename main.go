@@ -205,58 +205,163 @@ func getGitHubTokenFromHostsFile() (string, error) {
 	return "", fmt.Errorf("no oauth_token found in hosts file")
 }
 
+// multiStringFlag allows repeatable string flags like --exclude
+type multiStringFlag []string
+
+func (m *multiStringFlag) String() string { return strings.Join(*m, ",") }
+func (m *multiStringFlag) Set(val string) error {
+	*m = append(*m, val)
+	return nil
+}
+
+// braceExpand provides a minimal single-brace expansion used for patterns like .y{a,}ml
+// Example: "*.y{a,}ml" -> ["*.yaml", "*.yml"]. If no braces present, returns the input as-is.
+func braceExpand(pattern string) []string {
+	start := strings.Index(pattern, "{")
+	end := strings.Index(pattern, "}")
+	if start == -1 || end == -1 || end < start+1 {
+		return []string{pattern}
+	}
+	prefix := pattern[:start]
+	alts := strings.Split(pattern[start+1:end], ",")
+	suffix := pattern[end+1:]
+	results := make([]string, 0, len(alts))
+	for _, a := range alts {
+		results = append(results, prefix+a+suffix)
+	}
+	return results
+}
+
+func hasYAMLExt(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".yml" || ext == ".yaml"
+}
+
+func shouldExclude(path string, excludeGlobs []string) bool {
+	for _, pat := range excludeGlobs {
+		for _, exp := range braceExpand(pat) {
+			if ok, _ := filepath.Match(exp, path); ok {
+				return true
+			}
+			// Also try match on base name to make excludes like "**/foo.yml" roughly work
+			if ok, _ := filepath.Match(exp, filepath.Base(path)); ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func collectFilesFromArgs(args []string, excludeGlobs []string) ([]string, []string) {
+	seen := make(map[string]struct{})
+	files := make([]string, 0, 16)
+	warnings := make([]string, 0)
+
+	for _, arg := range args {
+		// If path exists, treat as file or directory
+		info, err := os.Stat(arg)
+		if err == nil {
+			if info.IsDir() {
+				// Recurse and pick YAML files
+				_ = filepath.WalkDir(arg, func(p string, d os.DirEntry, err error) error {
+					if err != nil {
+						return nil
+					}
+					if d.IsDir() {
+						return nil
+					}
+					if !hasYAMLExt(p) {
+						return nil
+					}
+					if shouldExclude(p, excludeGlobs) {
+						return nil
+					}
+					if _, ok := seen[p]; !ok {
+						seen[p] = struct{}{}
+						files = append(files, p)
+					}
+					return nil
+				})
+				continue
+			}
+			// Plain file
+			if hasYAMLExt(arg) && !shouldExclude(arg, excludeGlobs) {
+				if _, ok := seen[arg]; !ok {
+					seen[arg] = struct{}{}
+					files = append(files, arg)
+				}
+			}
+			continue
+		}
+
+		// Treat as glob pattern (with simple brace expansion)
+		hadMatch := false
+		for _, pat := range braceExpand(arg) {
+			matches, _ := filepath.Glob(pat)
+			for _, m := range matches {
+				fi, err := os.Stat(m)
+				if err != nil || fi.IsDir() {
+					continue
+				}
+				if !hasYAMLExt(m) || shouldExclude(m, excludeGlobs) {
+					continue
+				}
+				hadMatch = true
+				if _, ok := seen[m]; !ok {
+					seen[m] = struct{}{}
+					files = append(files, m)
+				}
+			}
+		}
+		if !hadMatch {
+			warnings = append(warnings, fmt.Sprintf("No matches for pattern: %s", arg))
+		}
+	}
+
+	sort.Strings(files)
+	return files, warnings
+}
+
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [--expand-major] [--policy <policy>] [--yes] <workflow-file>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Example: %s --policy same-major --yes .github/workflows/update_cli_docs.yml\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [--expand-major] [--policy <policy>] [--yes] [--dry-run] [--exclude <glob>] <file|dir|glob>...\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Example: %s --policy same-major --yes .github/workflows\n", os.Args[0])
 	}
 	// Toggle: when a moving major tag (e.g., v4 or 4) is detected, expand the displayed version
 	// comment to the full semver tag (e.g., v4.2.2) that the major tag currently points to.
 	expandMajorFlag := flag.Bool("expand-major", false, "Expand moving major tags (vN or N) to full semver in the version comment")
 	policyFlag := flag.String("policy", "major", "Update policy: major (default), same-major, requested")
 	yesFlag := flag.Bool("yes", false, "Apply changes without confirmation prompt")
+	dryRunFlag := flag.Bool("dry-run", false, "Preview changes without writing files; exit 2 when changes would be made")
+	var excludeGlobs multiStringFlag
+	flag.Var(&excludeGlobs, "exclude", "Exclude glob (repeatable)")
 	flag.Parse()
 
-	if flag.NArg() != 1 {
+	if *yesFlag && *dryRunFlag {
+		fmt.Fprintln(os.Stderr, "Error: --dry-run cannot be used together with --yes")
+		os.Exit(1)
+	}
+
+	if flag.NArg() < 1 {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	workflowFile := flag.Arg(0)
-
-	if _, err := os.Stat(workflowFile); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Error: File '%s' not found\n", workflowFile)
+	args := flag.Args()
+	files, warnings := collectFilesFromArgs(args, excludeGlobs)
+	for _, w := range warnings {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+	}
+	if len(files) == 0 {
+		fmt.Fprintln(os.Stderr, "No files to process.")
 		os.Exit(1)
 	}
-
-	fmt.Printf("\n%s %s\n\n", bold("Scanning workflow"), workflowFile)
-
-	content, err := os.ReadFile(workflowFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		os.Exit(1)
-	}
-
-	actions := extractActions(string(content))
-	occurrences := extractOccurrences(string(content))
-	if len(actions) == 0 {
-		fmt.Printf("%s No GitHub Actions references found in %s\n", bold("No actions:"), workflowFile)
-		os.Exit(1)
-	}
-
-	fmt.Println(bold("Discovered actions:\n"))
-	for _, action := range actions {
-		fmt.Printf("  - %s\n", action)
-	}
-	fmt.Println()
 
 	// Determine effective update policy (default to latest major) from flag only
 	effectivePolicy := UpdatePolicyMajor
 	if p, err := parsePolicy(*policyFlag); err == nil {
 		effectivePolicy = p
 	}
-
-	fmt.Println(bold("Resolving latest versions and SHAs (parallel)...\n"))
 
 	token, err := getGitHubToken()
 	if err != nil {
@@ -267,50 +372,107 @@ func main() {
 	ctx := context.Background()
 	client := github.NewTokenClient(ctx, token)
 
-	actionInfos := getActionInfosForOccurrences(ctx, client, occurrences, *expandMajorFlag, effectivePolicy)
+	filesWithPlannedChanges := 0
+	filesUpdated := 0
+	filesUnchanged := 0
+	filesErrored := 0
 
-	if len(actionInfos) == 0 {
-		fmt.Println(bold("No action information retrieved."))
-		os.Exit(1)
-	}
+	for _, workflowFile := range files {
+		fmt.Printf("\n%s %s\n\n", bold("Scanning workflow"), workflowFile)
 
-	fmt.Println()
-	fmt.Printf("%s %s\n", bold("Updating file"), workflowFile)
+		content, err := os.ReadFile(workflowFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading file %s: %v\n", workflowFile, err)
+			filesErrored++
+			continue
+		}
 
-	updatedContent := updateContent(string(content), occurrences, actionInfos)
+		actions := extractActions(string(content))
+		occurrences := extractOccurrences(string(content))
+		if len(actions) == 0 {
+			fmt.Printf("%s No GitHub Actions references found in %s\n", bold("No actions:"), workflowFile)
+			filesUnchanged++
+			continue
+		}
 
-	// Always show planned updates for a clear from → to view
-	fmt.Println()
-	printPlannedChanges(occurrences, actionInfos)
-
-	if string(content) == updatedContent {
+		fmt.Println(bold("Discovered actions:\n"))
+		for _, action := range actions {
+			fmt.Printf("  - %s\n", action)
+		}
 		fmt.Println()
-		fmt.Println(bold("\nUp to date:"), "All actions are already pinned to the latest versions.")
-		return
-	}
 
-	fmt.Println()
-	// If --yes is set, skip the prompt and apply immediately
-	if !*yesFlag {
-		if !promptConfirmation(bold("Apply changes?")+" [y/N] ") {
-			fmt.Println(bold("\nNo changes applied."))
-			return
+		fmt.Println(bold("Resolving latest versions and SHAs (parallel)...\n"))
+		actionInfos := getActionInfosForOccurrences(ctx, client, occurrences, *expandMajorFlag, effectivePolicy)
+		if len(actionInfos) == 0 {
+			fmt.Println(bold("No action information retrieved."))
+			filesErrored++
+			continue
 		}
+
+		fmt.Println()
+		fmt.Printf("%s %s\n", bold("Updating file"), workflowFile)
+
+		updatedContent := updateContent(string(content), occurrences, actionInfos)
+
+		fmt.Println()
+		printPlannedChanges(occurrences, actionInfos)
+
+		if string(content) == updatedContent {
+			fmt.Println()
+			fmt.Println(bold("\nUp to date:"), "All actions are already pinned to the latest versions.")
+			filesUnchanged++
+			continue
+		}
+
+		// Planned changes exist for this file
+		filesWithPlannedChanges++
+
+		fmt.Println()
+		if *dryRunFlag {
+			// Do not write; continue to next file
+			continue
+		}
+
+		// If --yes is set, skip the prompt and apply immediately
+		if !*yesFlag {
+			if !promptConfirmation(bold("Apply changes?")+" [y/N] ") {
+				fmt.Println(bold("\nNo changes applied."))
+				// Not applied, but still a planned change; proceed
+				continue
+			}
+		}
+
+		err = os.WriteFile(workflowFile, []byte(updatedContent), 0644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing file %s: %v\n", workflowFile, err)
+			filesErrored++
+			continue
+		}
+
+		fmt.Printf("%s %s\n", bold("\nUpdated file"), workflowFile)
+		fmt.Println()
+		fmt.Println(bold("Pinned actions:\n"))
+		for _, info := range actionInfos {
+			if info.Error == nil {
+				fmt.Printf("  %s/%s@%s # %s\n", info.Owner, info.Repo, info.SHA, info.Version)
+			}
+		}
+		filesUpdated++
 	}
 
-	err = os.WriteFile(workflowFile, []byte(updatedContent), 0644)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
+	// Final summary and exit code
+	fmt.Println()
+	fmt.Println(bold("Summary:"))
+	fmt.Printf("  Updated files: %d\n", filesUpdated)
+	fmt.Printf("  Files with planned changes: %d\n", filesWithPlannedChanges)
+	fmt.Printf("  Unchanged files: %d\n", filesUnchanged)
+	fmt.Printf("  Errors: %d\n", filesErrored)
+
+	if filesErrored > 0 {
 		os.Exit(1)
 	}
-
-	fmt.Printf("%s %s\n", bold("\nUpdated file"), workflowFile)
-	fmt.Println()
-	fmt.Println(bold("Pinned actions:\n"))
-	for _, info := range actionInfos {
-		if info.Error == nil {
-			fmt.Printf("  %s/%s@%s # %s\n", info.Owner, info.Repo, info.SHA, info.Version)
-		}
+	if filesWithPlannedChanges > 0 || filesUpdated > 0 {
+		os.Exit(2)
 	}
 }
 
