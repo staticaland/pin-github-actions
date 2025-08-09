@@ -9,6 +9,10 @@ pin-dry:
 pin-apply:
 	printf "y\n" | go run main.go {{workflow}}
 
+# Run tests
+test:
+	go test ./...
+
 # Convenience alias to run dry by default
 run:
 	just pin-dry

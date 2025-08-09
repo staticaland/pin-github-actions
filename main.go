@@ -311,23 +311,24 @@ func main() {
 }
 
 func extractActions(content string) []string {
-	re := regexp.MustCompile(`uses:\s+([^@/]+/[^@\s]+)`)
-	matches := re.FindAllStringSubmatch(content, -1)
+    // Preserve order of first appearance while de-duplicating
+    re := regexp.MustCompile(`uses:\s+([^@/]+/[^@\s]+)`)
+    matches := re.FindAllStringSubmatch(content, -1)
 
-	actionSet := make(map[string]bool)
-	for _, match := range matches {
-		if len(match) > 1 {
-			actionSet[match[1]] = true
-		}
-	}
-
-	var actions []string
-	for action := range actionSet {
-		actions = append(actions, action)
-	}
-	sort.Strings(actions)
-
-	return actions
+    seen := make(map[string]bool)
+    actions := make([]string, 0, len(matches))
+    for _, match := range matches {
+        if len(match) <= 1 {
+            continue
+        }
+        action := match[1]
+        if seen[action] {
+            continue
+        }
+        seen[action] = true
+        actions = append(actions, action)
+    }
+    return actions
 }
 
 // extractOccurrences finds each `uses: owner/repo@ref` occurrence along with positions.
