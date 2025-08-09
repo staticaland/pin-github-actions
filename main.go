@@ -103,7 +103,7 @@ func bold(text string) string {
 	return "\u001b[1m" + text + "\u001b[0m"
 }
 
-// prettyRef formats a ref for human friendly output.
+// prettyRef formats a ref for human-friendly output.
 // - If empty, returns (none)
 // - If it looks like a full 40-char SHA, abbreviates to 12 chars with an ellipsis
 // - Otherwise returns the ref unchanged
