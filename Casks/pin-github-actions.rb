@@ -2,7 +2,7 @@
 cask "pin-github-actions" do
   desc ""
   homepage ""
-  version "1.7.0"
+  version "1.8.0"
 
   livecheck do
     skip "Auto-generated on release."
@@ -12,28 +12,28 @@ cask "pin-github-actions" do
 
   on_macos do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.7.0/pin-github-actions_1.7.0_darwin_amd64.tar.gz"
-      sha256 "3dacb300dd2797860189f197d18aabe97b7b6ee44bf2f4909fe43e142283e525"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.8.0/pin-github-actions_1.8.0_darwin_amd64.tar.gz"
+      sha256 "928c7ab5dfbb45c93b8565d85b550b35f70be9500445ad3c73cba3c817535936"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.7.0/pin-github-actions_1.7.0_darwin_arm64.tar.gz"
-      sha256 "5b94e907bb42daaec44b21b9efef5e61eae6ba9c6f4de4baa1e4a1ffa2a05cc6"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.8.0/pin-github-actions_1.8.0_darwin_arm64.tar.gz"
+      sha256 "00e91b54c993fbec9503c5aacccf18647fbafcf2a6cbad92b0b7bbe17ae207e0"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.7.0/pin-github-actions_1.7.0_linux_amd64.tar.gz"
-      sha256 "d1053cc3f18cecd8741d8e2ecae28bd4505a55c4ed1e0b69e5a8ca617def0eeb"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.8.0/pin-github-actions_1.8.0_linux_amd64.tar.gz"
+      sha256 "727b98be17677c3dfb749c327c0217da8a49d9d6724b7b694a0cedfba08abfc2"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.7.0/pin-github-actions_1.7.0_linux_arm64.tar.gz"
-      sha256 "ba0a7cb37ac3c16b0b7d40c7274e33197f088ec72e7b5880d38a3f618fc1ca2c"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.8.0/pin-github-actions_1.8.0_linux_arm64.tar.gz"
+      sha256 "6e59b301ddd08c2501f67e3fbb7240ca6ef6e83940d18bf5ff372f51044dcbe1"
     end
   end
 
-  on_macos do
-    postflight do
+  postflight do
+    on_macos do
       if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
         system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/pin-github-actions"]
       end
