@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.0](https://github.com/staticaland/pin-github-actions/compare/v1.6.0...v1.7.0) (2025-08-08)
+
+
+### Features
+
+* Improve tag resolution by collecting and checking candidate tags in two passes ([#10](https://github.com/staticaland/pin-github-actions/issues/10)) ([93c0139](https://github.com/staticaland/pin-github-actions/commit/93c0139cb29a017798e5ece5252fbacdfed03a88))
+* Optimize major pinning search heuristics ([#8](https://github.com/staticaland/pin-github-actions/issues/8)) ([0bb5fba](https://github.com/staticaland/pin-github-actions/commit/0bb5fba4bbb0b411e9c7d5c7fcda117ed9200ce7))
+
 ## [1.6.0](https://github.com/staticaland/pin-github-actions/compare/v1.5.0...v1.6.0) (2025-08-08)
 
 
