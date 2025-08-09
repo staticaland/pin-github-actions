@@ -18,6 +18,8 @@ Then, install the cask:
 brew install --cask pin-github-actions
 ```
 
+If the cask is unavailable on your Linux setup, use one of the alternatives below instead.
+
 ### From Source
 
 ```bash
@@ -30,6 +32,10 @@ Or install directly:
 go install github.com/staticaland/pin-github-actions@latest
 ```
 
+### Prebuilt binaries
+
+Download a tarball for your OS/arch from the project releases and place the `pin-github-actions` binary on your `PATH`.
+
 ## Usage
 
 ```bash
@@ -39,11 +45,20 @@ pin-github-actions [--expand-major] [--policy <policy>] <workflow-file>
 pin-github-actions --policy same-major .github/workflows/release.yml
 ```
 
-The tool will:
+What it does:
 
 - detect all `uses: owner/repo@ref` entries
-- resolve the latest release tag via the GitHub API
-- replace `@ref` with the exact commit SHA and keep the version as a comment
+- resolve a version based on your policy (see Options below). By default, it uses the latest GitHub release if available; otherwise it falls back to the highest semantic version tag; if no semver tags exist, it falls back to the newest tag returned by the API
+- replace `@ref` with the exact commit SHA and keep the chosen version as a trailing comment
+
+Flow:
+
+- prints discovered actions
+- resolves versions and SHAs in parallel
+- shows a "Planned updates" preview (from → to) with line/column hints
+- prompts for confirmation before writing: `Apply changes? [y/N]`
+  - answering no leaves the file unchanged
+  - answering yes writes the updated workflow file in place
 
 Example replacement: `uses: actions/checkout@11bd... # v4.2.2`.
 
@@ -61,7 +76,9 @@ Requires a GitHub token with public repo read access. The token is discovered in
 
 - `GH_TOKEN`
 - `GITHUB_TOKEN`
-- token from `gh` (via `gh auth login`)
+- token from `gh` (via `gh auth login`) discovered via:
+  - OS keychain entry `gh:github.com`
+  - `~/.config/gh/hosts.yml` (`github.com.oauth_token`)
 
 If no token is found, the program exits with an error.
 
