@@ -103,7 +103,7 @@ func bold(text string) string {
 	return "\u001b[1m" + text + "\u001b[0m"
 }
 
-// prettyRef formats a ref for human-friendly output.
+// prettyRef formats a ref for human friendly output.
 // - If empty, returns (none)
 // - If it looks like a full 40-char SHA, abbreviates to 12 chars with an ellipsis
 // - Otherwise returns the ref unchanged
@@ -132,30 +132,30 @@ func isFullSHA(s string) bool {
 
 // printPlannedChanges prints a concise from → to mapping for each occurrence that will change.
 func printPlannedChanges(occurrences []ActionOccurrence, actionInfos []ActionInfo) {
-    fmt.Println(bold("Planned updates:\n"))
-    hadChange := false
+	fmt.Println(bold("Planned updates:\n"))
+	hadChange := false
 
-    for i, occ := range occurrences {
-        if i >= len(actionInfos) {
-            continue
-        }
-        info := actionInfos[i]
-        if info.Error != nil {
-            continue
-        }
-        oldRef := occ.RequestedRef
-        newRef := info.SHA
-        if oldRef == newRef || strings.TrimSpace(newRef) == "" {
-            continue
-        }
-        action := fmt.Sprintf("%s/%s", occ.Owner, occ.Repo)
-        // Example: "  - actions/checkout (L12:C9): v4 → 5e2f1c1…  (v4.2.2)"
-        fmt.Printf("  - %s (L%d:C%d): %s → %s  (%s)\n", action, occ.Line, occ.Column, prettyRef(oldRef), prettyRef(newRef), info.Version)
-        hadChange = true
-    }
-    if !hadChange {
-        fmt.Println("  No changes needed. All actions already pinned to the latest commits.")
-    }
+	for i, occ := range occurrences {
+		if i >= len(actionInfos) {
+			continue
+		}
+		info := actionInfos[i]
+		if info.Error != nil {
+			continue
+		}
+		oldRef := occ.RequestedRef
+		newRef := info.SHA
+		if oldRef == newRef || strings.TrimSpace(newRef) == "" {
+			continue
+		}
+		action := fmt.Sprintf("%s/%s", occ.Owner, occ.Repo)
+		// Example: "  - actions/checkout (L12:C9): v4 → 5e2f1c1…  (v4.2.2)"
+		fmt.Printf("  - %s (L%d:C%d): %s → %s  (%s)\n", action, occ.Line, occ.Column, prettyRef(oldRef), prettyRef(newRef), info.Version)
+		hadChange = true
+	}
+	if !hadChange {
+		fmt.Println("  No changes needed. All actions already pinned to the latest commits.")
+	}
 }
 
 func getGitHubToken() (string, error) {
@@ -306,7 +306,7 @@ func main() {
 	fmt.Println()
 	// If --yes is set, skip the prompt and apply immediately
 	if !*yesFlag {
-		if !promptConfirmation(bold("Apply changes?")+" [y/N] ") {
+		if !promptConfirmation(bold("Apply changes?") + " [y/N] ") {
 			fmt.Println(bold("\nNo changes applied."))
 			return
 		}
@@ -329,24 +329,24 @@ func main() {
 }
 
 func extractActions(content string) []string {
-    // Preserve order of first appearance while de-duplicating
-    re := regexp.MustCompile(`uses:\s+([^@/]+/[^@\s]+)`)
-    matches := re.FindAllStringSubmatch(content, -1)
+	// Preserve order of first appearance while de-duplicating
+	re := regexp.MustCompile(`uses:\s+([^@/]+/[^@\s]+)`)
+	matches := re.FindAllStringSubmatch(content, -1)
 
-    seen := make(map[string]bool)
-    actions := make([]string, 0, len(matches))
-    for _, match := range matches {
-        if len(match) <= 1 {
-            continue
-        }
-        action := match[1]
-        if seen[action] {
-            continue
-        }
-        seen[action] = true
-        actions = append(actions, action)
-    }
-    return actions
+	seen := make(map[string]bool)
+	actions := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) <= 1 {
+			continue
+		}
+		action := match[1]
+		if seen[action] {
+			continue
+		}
+		seen[action] = true
+		actions = append(actions, action)
+	}
+	return actions
 }
 
 // extractOccurrences finds each `uses: owner/repo@ref` occurrence along with positions.
@@ -702,11 +702,14 @@ func resolveActionForPolicy(ctx context.Context, client *github.Client, owner, r
 func getActionInfosForOccurrences(ctx context.Context, client *github.Client, occurrences []ActionOccurrence, expandMajor bool, policy UpdatePolicy) []ActionInfo {
 	var wg sync.WaitGroup
 	infos := make([]ActionInfo, len(occurrences))
-    // Collect per-occurrence messages for deterministic output after wg.Wait()
-    messages := make([]string, len(occurrences))
+	// Collect per-occurrence messages for deterministic output after wg.Wait()
+	messages := make([]string, len(occurrences))
 
 	// Simple cache to avoid duplicate network calls when resolution is identical.
-	type cacheEntry struct{ info ActionInfo; ok bool }
+	type cacheEntry struct {
+		info ActionInfo
+		ok   bool
+	}
 	cache := make(map[string]cacheEntry)
 	var mu sync.Mutex
 	cacheKey := func(owner, repo string, policy UpdatePolicy, requestedRef string) string {
@@ -727,9 +730,9 @@ func getActionInfosForOccurrences(ctx context.Context, client *github.Client, oc
 			mu.Unlock()
 
 			info, err := resolveActionForPolicy(ctx, client, o.Owner, o.Repo, o.RequestedRef, expandMajor, policy)
-            if err == nil {
-                messages[idx] = fmt.Sprintf("  %s: %s -> %s", o.Action, info.Version, info.SHA)
-            }
+			if err == nil {
+				messages[idx] = fmt.Sprintf("  %s: %s -> %s", o.Action, info.Version, info.SHA)
+			}
 			infos[idx] = info
 
 			mu.Lock()
@@ -739,13 +742,13 @@ func getActionInfosForOccurrences(ctx context.Context, client *github.Client, oc
 	}
 
 	wg.Wait()
-    // Print buffered messages in the original order
-    for _, m := range messages {
-        if strings.TrimSpace(m) == "" {
-            continue
-        }
-        fmt.Println(m)
-    }
+	// Print buffered messages in the original order
+	for _, m := range messages {
+		if strings.TrimSpace(m) == "" {
+			continue
+		}
+		fmt.Println(m)
+	}
 	return infos
 }
 
@@ -756,25 +759,25 @@ func updateContent(content string, occurrences []ActionOccurrence, actionInfos [
 		end   int
 		text  string
 	}
-    repls := make([]repl, 0)
-    for i, occ := range occurrences {
-        if i >= len(actionInfos) {
-            continue
-        }
-        info := actionInfos[i]
-        if info.Error != nil || strings.TrimSpace(info.SHA) == "" || occ.ReplaceStart < 0 || occ.ReplaceEnd <= occ.ReplaceStart {
-            continue
-        }
-        // If the target SHA equals the current ref, skip
-        if occ.RequestedRef == info.SHA {
-            continue
-        }
-        repls = append(repls, repl{
-            start: occ.ReplaceStart,
-            end:   occ.ReplaceEnd,
-            text:  fmt.Sprintf("@%s # %s", info.SHA, info.Version),
-        })
-    }
+	repls := make([]repl, 0)
+	for i, occ := range occurrences {
+		if i >= len(actionInfos) {
+			continue
+		}
+		info := actionInfos[i]
+		if info.Error != nil || strings.TrimSpace(info.SHA) == "" || occ.ReplaceStart < 0 || occ.ReplaceEnd <= occ.ReplaceStart {
+			continue
+		}
+		// If the target SHA equals the current ref, skip
+		if occ.RequestedRef == info.SHA {
+			continue
+		}
+		repls = append(repls, repl{
+			start: occ.ReplaceStart,
+			end:   occ.ReplaceEnd,
+			text:  fmt.Sprintf("@%s # %s", info.SHA, info.Version),
+		})
+	}
 	if len(repls) == 0 {
 		return content
 	}
