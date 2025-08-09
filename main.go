@@ -214,6 +214,9 @@ func main() {
 	// comment to the full semver tag (e.g., v4.2.2) that the major tag currently points to.
 	expandMajorFlag := flag.Bool("expand-major", false, "Expand moving major tags (vN or N) to full semver in the version comment")
 	policyFlag := flag.String("policy", "major", "Update policy: major (default), same-major, requested")
+	// New: allow non-interactive apply
+	yesFlag := flag.Bool("yes", false, "Apply changes without prompting")
+	yesShortFlag := flag.Bool("y", false, "Alias for --yes")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -289,9 +292,12 @@ func main() {
 	}
 
 	fmt.Println()
-	if !promptConfirmation(bold("Apply changes?")+" [y/N] ") {
-		fmt.Println(bold("\nNo changes applied."))
-		return
+	// Only prompt if --yes/-y not provided
+	if !(*yesFlag || *yesShortFlag) {
+		if !promptConfirmation(bold("Apply changes?")+" [y/N] ") {
+			fmt.Println(bold("\nNo changes applied."))
+			return
+		}
 	}
 
 	err = os.WriteFile(workflowFile, []byte(updatedContent), 0644)

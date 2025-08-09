@@ -24,3 +24,11 @@ pin-all-dry:
 		echo "==> $$f"
 		printf "n\n" | go run main.go "$$f"
 	done
+
+# Apply over all workflow files in the repo (non-interactive)
+pin-all-apply:
+	for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+		[ -e "$$f" ] || continue
+		echo "==> $$f"
+		go run main.go --yes "$$f"
+	done
