@@ -39,10 +39,10 @@ Download a tarball for your OS/arch from the project releases and place the `pin
 ## Usage
 
 ```bash
-pin-github-actions [--expand-major] [--policy <policy>] <workflow-file>
+pin-github-actions [--expand-major] [--policy <policy>] [--yes] <workflow-file>
 
 # Example
-pin-github-actions --policy same-major .github/workflows/release.yml
+pin-github-actions --policy same-major --yes .github/workflows/release.yml
 ```
 
 What it does:
@@ -56,7 +56,7 @@ Flow:
 - prints discovered actions
 - resolves versions and SHAs in parallel
 - shows a "Planned updates" preview (from → to) with line/column hints
-- prompts for confirmation before writing: `Apply changes? [y/N]`
+- prompts for confirmation before writing: `Apply changes? [y/N]` (skipped when `--yes` is provided)
   - answering no leaves the file unchanged
   - answering yes writes the updated workflow file in place
 
@@ -64,11 +64,12 @@ Example replacement: `uses: actions/checkout@11bd... # v4.2.2`.
 
 ### Options
 
-- `--expand-major`: When the input ref is a moving major tag like `v4` or `4`, the tool will resolve the commit and then attempt to discover the exact full semver tag (e.g. `v4.2.2`) that points to that commit. The comment will use this full version instead of the major tag. This only affects the version shown in the comment; the pinned ref is still the immutable commit SHA.
+- `--expand-major`: When the input ref is a moving major tag like `v4` or `4`, the tool will resolve the commit and then attempt to discover the exact full semver tag (e.g., `v4.2.2`) that points to that commit. The comment will use this full version instead of the major tag. This only affects the version shown in the comment; the pinned ref is still the immutable commit SHA.
 - `--policy`: Controls how versions are selected relative to what's in your workflow. Defaults to `major`.
   - `major` (default): bump to the latest available version across all majors (Renovate-like "latest" behavior)
   - `same-major`: stay within the requested major and pick the latest tag for that major
   - `requested`: pin exactly the requested ref (e.g., resolve `v4` to the commit it currently points to)
+- `--yes`: Apply updates non-interactively by skipping the confirmation prompt.
 
 ## Authentication
 

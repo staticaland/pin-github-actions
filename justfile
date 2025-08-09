@@ -9,6 +9,10 @@ pin-dry:
 pin-apply:
 	printf "y\n" | go run main.go {{workflow}}
 
+# Apply changes non-interactively using --yes
+pin-apply-yes:
+	go run main.go --yes {{workflow}}
+
 # Run tests
 test:
 	go test ./...

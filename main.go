@@ -207,13 +207,14 @@ func getGitHubTokenFromHostsFile() (string, error) {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s <workflow-file>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Example: %s .github/workflows/update_cli_docs.yml\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [--expand-major] [--policy <policy>] [--yes] <workflow-file>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Example: %s --policy same-major --yes .github/workflows/update_cli_docs.yml\n", os.Args[0])
 	}
 	// Toggle: when a moving major tag (e.g., v4 or 4) is detected, expand the displayed version
 	// comment to the full semver tag (e.g., v4.2.2) that the major tag currently points to.
 	expandMajorFlag := flag.Bool("expand-major", false, "Expand moving major tags (vN or N) to full semver in the version comment")
 	policyFlag := flag.String("policy", "major", "Update policy: major (default), same-major, requested")
+	yesFlag := flag.Bool("yes", false, "Apply changes without confirmation prompt")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -289,9 +290,12 @@ func main() {
 	}
 
 	fmt.Println()
-	if !promptConfirmation(bold("Apply changes?")+" [y/N] ") {
-		fmt.Println(bold("\nNo changes applied."))
-		return
+	// If --yes is set, skip the prompt and apply immediately
+	if !*yesFlag {
+		if !promptConfirmation(bold("Apply changes?")+" [y/N] ") {
+			fmt.Println(bold("\nNo changes applied."))
+			return
+		}
 	}
 
 	err = os.WriteFile(workflowFile, []byte(updatedContent), 0644)
