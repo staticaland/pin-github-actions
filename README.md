@@ -39,7 +39,7 @@ Download a tarball for your OS/arch from the project releases and place the `pin
 ## Usage
 
 ```bash
-pin-github-actions [--expand-major] [--policy <policy>] [--yes] <workflow-file>
+pin-github-actions [--expand-major] [--policy <policy>] [--yes] [--dry-run] <workflow-file>
 
 # Example
 pin-github-actions --policy same-major --yes .github/workflows/release.yml
@@ -70,6 +70,9 @@ Example replacement: `uses: actions/checkout@11bd... # v4.2.2`.
   - `same-major`: stay within the requested major and pick the latest tag for that major
   - `requested`: pin exactly the requested ref (e.g., resolve `v4` to the commit it currently points to)
 - `--yes`: Apply updates non-interactively by skipping the confirmation prompt.
+- `--dry-run`: Perform a non-destructive preview. Prints the planned updates and exits without prompting or writing to disk.
+  - Exit code 0 when no changes are needed, 2 when changes would be made (useful in CI)
+  - Mutually exclusive with `--yes`
 
 ## Authentication
 
