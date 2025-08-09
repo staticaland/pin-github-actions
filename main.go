@@ -683,6 +683,8 @@ func resolveActionForPolicy(ctx context.Context, client *github.Client, owner, r
 func getActionInfosForOccurrences(ctx context.Context, client *github.Client, occurrences []ActionOccurrence, expandMajor bool, policy UpdatePolicy) []ActionInfo {
 	var wg sync.WaitGroup
 	infos := make([]ActionInfo, len(occurrences))
+    // Collect per-occurrence messages for deterministic output after wg.Wait()
+    messages := make([]string, len(occurrences))
 
 	// Simple cache to avoid duplicate network calls when resolution is identical.
 	type cacheEntry struct{ info ActionInfo; ok bool }
@@ -706,9 +708,9 @@ func getActionInfosForOccurrences(ctx context.Context, client *github.Client, oc
 			mu.Unlock()
 
 			info, err := resolveActionForPolicy(ctx, client, o.Owner, o.Repo, o.RequestedRef, expandMajor, policy)
-			if err == nil {
-				fmt.Printf("  %s: %s -> %s\n", o.Action, info.Version, info.SHA)
-			}
+            if err == nil {
+                messages[idx] = fmt.Sprintf("  %s: %s -> %s", o.Action, info.Version, info.SHA)
+            }
 			infos[idx] = info
 
 			mu.Lock()
@@ -718,6 +720,13 @@ func getActionInfosForOccurrences(ctx context.Context, client *github.Client, oc
 	}
 
 	wg.Wait()
+    // Print buffered messages in the original order
+    for _, m := range messages {
+        if strings.TrimSpace(m) == "" {
+            continue
+        }
+        fmt.Println(m)
+    }
 	return infos
 }
 
