@@ -132,54 +132,30 @@ func isFullSHA(s string) bool {
 
 // printPlannedChanges prints a concise from → to mapping for each occurrence that will change.
 func printPlannedChanges(occurrences []ActionOccurrence, actionInfos []ActionInfo) {
-	fmt.Println(bold("Planned updates:\n"))
-	hadChange := false
+    fmt.Println(bold("Planned updates:\n"))
+    hadChange := false
 
-	// Build a map from a unique key to ActionInfo for fast lookup.
-	type actionKey struct {
-		Owner string
-		Repo  string
-		Line  int
-		Column int
-	}
-	infoMap := make(map[actionKey]ActionInfo, len(actionInfos))
-	for _, info := range actionInfos {
-		// Only add if no error and has identifying info
-		if info.Error == nil {
-			key := actionKey{
-				Owner:  info.Owner,
-				Repo:   info.Repo,
-				Line:   info.Line,
-				Column: info.Column,
-			}
-			infoMap[key] = info
-		}
-	}
-
-	for _, occ := range occurrences {
-		key := actionKey{
-			Owner:  occ.Owner,
-			Repo:   occ.Repo,
-			Line:   occ.Line,
-			Column: occ.Column,
-		}
-		info, ok := infoMap[key]
-		if !ok {
-			continue
-		}
-		oldRef := occ.RequestedRef
-		newRef := info.SHA
-		if oldRef == newRef || newRef == "" {
-			continue
-		}
-		action := fmt.Sprintf("%s/%s", info.Owner, info.Repo)
-		// Example: "  - actions/checkout (L12:C9): v4 → 5e2f1c1…  (v4.2.2)"
-		fmt.Printf("  - %s (L%d:C%d): %s → %s  (%s)\n", action, occ.Line, occ.Column, prettyRef(oldRef), prettyRef(newRef), info.Version)
-		hadChange = true
-	}
-	if !hadChange {
-		fmt.Println("  No changes needed. All actions already pinned to the latest commits.")
-	}
+    for i, occ := range occurrences {
+        if i >= len(actionInfos) {
+            continue
+        }
+        info := actionInfos[i]
+        if info.Error != nil {
+            continue
+        }
+        oldRef := occ.RequestedRef
+        newRef := info.SHA
+        if oldRef == newRef || strings.TrimSpace(newRef) == "" {
+            continue
+        }
+        action := fmt.Sprintf("%s/%s", occ.Owner, occ.Repo)
+        // Example: "  - actions/checkout (L12:C9): v4 → 5e2f1c1…  (v4.2.2)"
+        fmt.Printf("  - %s (L%d:C%d): %s → %s  (%s)\n", action, occ.Line, occ.Column, prettyRef(oldRef), prettyRef(newRef), info.Version)
+        hadChange = true
+    }
+    if !hadChange {
+        fmt.Println("  No changes needed. All actions already pinned to the latest commits.")
+    }
 }
 
 func getGitHubToken() (string, error) {
@@ -752,25 +728,25 @@ func updateContent(content string, occurrences []ActionOccurrence, actionInfos [
 		end   int
 		text  string
 	}
-	repls := make([]repl, 0)
-	for _, occ := range occurrences {
-		info, ok := actionInfos[occurrenceKey(occ)]
-		if !ok {
-			continue
-		}
-		if info.Error != nil || info.SHA == "" || occ.ReplaceStart < 0 || occ.ReplaceEnd <= occ.ReplaceStart {
-			continue
-		}
-		// If the target SHA equals the current ref, skip
-		if occ.RequestedRef == info.SHA {
-			continue
-		}
-		repls = append(repls, repl{
-			start: occ.ReplaceStart,
-			end:   occ.ReplaceEnd,
-			text:  fmt.Sprintf("@%s # %s", info.SHA, info.Version),
-		})
-	}
+    repls := make([]repl, 0)
+    for i, occ := range occurrences {
+        if i >= len(actionInfos) {
+            continue
+        }
+        info := actionInfos[i]
+        if info.Error != nil || strings.TrimSpace(info.SHA) == "" || occ.ReplaceStart < 0 || occ.ReplaceEnd <= occ.ReplaceStart {
+            continue
+        }
+        // If the target SHA equals the current ref, skip
+        if occ.RequestedRef == info.SHA {
+            continue
+        }
+        repls = append(repls, repl{
+            start: occ.ReplaceStart,
+            end:   occ.ReplaceEnd,
+            text:  fmt.Sprintf("@%s # %s", info.SHA, info.Version),
+        })
+    }
 	if len(repls) == 0 {
 		return content
 	}
