@@ -33,7 +33,7 @@ cask "pin-github-actions" do
   end
 
   postflight do
-    if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+    if OS.mac? && File.exist?("/usr/bin/xattr")
       system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/pin-github-actions"]
     end
   end
