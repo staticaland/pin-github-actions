@@ -2,7 +2,7 @@
 cask "pin-github-actions" do
   desc ""
   homepage ""
-  version "1.9.0"
+  version "1.10.0"
 
   livecheck do
     skip "Auto-generated on release."
@@ -12,30 +12,29 @@ cask "pin-github-actions" do
 
   on_macos do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.9.0/pin-github-actions_1.9.0_darwin_amd64.tar.gz"
-      sha256 "f4cd252996e681fbf61e8338dbed617abe4b5f97b2d1ded20044f0659a9be173"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.10.0/pin-github-actions_1.10.0_darwin_amd64.tar.gz"
+      sha256 "4326f45d96d48b6503410ae594c5d68f163ace9338af12f71276e73c102a7927"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.9.0/pin-github-actions_1.9.0_darwin_arm64.tar.gz"
-      sha256 "80d9ab44e4c0c0ac56fd1f91ddcbf14d2fe2ee64a734c616abe45bdb8ba652ff"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.10.0/pin-github-actions_1.10.0_darwin_arm64.tar.gz"
+      sha256 "f52a34ba45f2b6f75c1e71ba2a98417f96666d772921f42726f370add635879a"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.9.0/pin-github-actions_1.9.0_linux_amd64.tar.gz"
-      sha256 "cab8f6f8f6afa21b71ea1566434d378bdf373c67cdfdd90bb697056afc422766"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.10.0/pin-github-actions_1.10.0_linux_amd64.tar.gz"
+      sha256 "2b87324e95d17f83f5b16f2be33781853fdd659865fe9e2465310989bcec8dc2"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.9.0/pin-github-actions_1.9.0_linux_arm64.tar.gz"
-      sha256 "769865d9e1d434b7d83f93fcbe8ee08d83482387fcc701f9ed672f02b1b552b3"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.10.0/pin-github-actions_1.10.0_linux_arm64.tar.gz"
+      sha256 "b00e5cb006ff72c3b64a61e484d63456660d50dacb48f76404feeb5747ad06c6"
     end
   end
 
   postflight do
     if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
-      # replace 'foo' with the actual binary name
-      system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/foo"]
+      system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/pin-github-actions"]
     end
   end
 
