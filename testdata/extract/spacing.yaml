@@ -1,0 +1,8 @@
+name: Spacing
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses:    actions/setup-go@v5.0.0
+      - uses:	actions/cache@v4 # tab after colon

@@ -1,0 +1,7 @@
+name: Inline Comments
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4 # pin to v4
+      - uses: docker/setup-buildx-action@v3    # keep this

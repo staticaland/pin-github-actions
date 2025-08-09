@@ -1,0 +1,8 @@
+name: Multiple
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+      - uses: github/super-linter@v6.0.0
