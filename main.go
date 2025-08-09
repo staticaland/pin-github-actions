@@ -207,7 +207,7 @@ func getGitHubTokenFromHostsFile() (string, error) {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [--expand-major] [--policy <policy>] [--yes] <workflow-file>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [--expand-major] [--policy <policy>] [--yes] [--dry-run] <workflow-file>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Example: %s --policy same-major --yes .github/workflows/update_cli_docs.yml\n", os.Args[0])
 	}
 	// Toggle: when a moving major tag (e.g., v4 or 4) is detected, expand the displayed version
@@ -215,7 +215,13 @@ func main() {
 	expandMajorFlag := flag.Bool("expand-major", false, "Expand moving major tags (vN or N) to full semver in the version comment")
 	policyFlag := flag.String("policy", "major", "Update policy: major (default), same-major, requested")
 	yesFlag := flag.Bool("yes", false, "Apply changes without confirmation prompt")
+	dryRunFlag := flag.Bool("dry-run", false, "Preview planned updates and exit without writing")
 	flag.Parse()
+
+	if *dryRunFlag && *yesFlag {
+		fmt.Fprintf(os.Stderr, "Error: --dry-run cannot be used with --yes\n")
+		os.Exit(1)
+	}
 
 	if flag.NArg() != 1 {
 		flag.Usage()
@@ -282,6 +288,14 @@ func main() {
 	// Always show planned updates for a clear from → to view
 	fmt.Println()
 	printPlannedChanges(occurrences, actionInfos)
+
+	// Dry-run: exit after preview without prompting or writing. Exit code 2 if changes would be made.
+	if *dryRunFlag {
+		if string(content) == updatedContent {
+			return
+		}
+		os.Exit(2)
+	}
 
 	if string(content) == updatedContent {
 		fmt.Println()
