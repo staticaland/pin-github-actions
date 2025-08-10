@@ -13,6 +13,10 @@ pin-apply:
 pin-apply-yes:
 	go run main.go --yes {{workflow}}
 
+# Apply changes non-interactively using --write (alias of --yes)
+pin-apply-write:
+	go run main.go --write {{workflow}}
+
 # Run tests
 test:
 	go test ./...

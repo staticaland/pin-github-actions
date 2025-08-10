@@ -1,4 +1,4 @@
-# Feature: Non-interactive apply (`--yes`)
+# Feature: Non-interactive apply (`--yes`/`--write`)
 
 Allow automatic application of updates without the confirmation prompt.
 
