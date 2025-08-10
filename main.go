@@ -205,49 +205,135 @@ func getGitHubTokenFromHostsFile() (string, error) {
 	return "", fmt.Errorf("no oauth_token found in hosts file")
 }
 
-func main() {
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [--expand-major] [--policy <policy>] [--yes] [--dry-run] <workflow-file>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Example: %s --policy same-major --yes .github/workflows/update_cli_docs.yml\n", os.Args[0])
+// BEGIN: directory/glob helpers
+// stringSliceFlag allows specifying a flag multiple times: --exclude A --exclude B
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string { return strings.Join(*s, ",") }
+func (s *stringSliceFlag) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
+// isGlobPattern returns true if the arg looks like a glob pattern
+func isGlobPattern(s string) bool {
+	return strings.ContainsAny(s, "*?[") || strings.Contains(s, "{")
+}
+
+// expandBraces expands simple {...} brace groups recursively, e.g. *.y{a,}ml -> [*.yaml, *.yml]
+func expandBraces(pattern string) []string {
+	start := strings.Index(pattern, "{")
+	if start == -1 {
+		return []string{pattern}
 	}
-	// Toggle: when a moving major tag (e.g., v4 or 4) is detected, expand the displayed version
-	// comment to the full semver tag (e.g., v4.2.2) that the major tag currently points to.
-	expandMajorFlag := flag.Bool("expand-major", false, "Expand moving major tags (vN or N) to full semver in the version comment")
-	policyFlag := flag.String("policy", "major", "Update policy: major (default), same-major, requested")
-	yesFlag := flag.Bool("yes", false, "Apply changes without confirmation prompt")
-	dryRunFlag := flag.Bool("dry-run", false, "Preview planned updates and exit without writing")
-	flag.Parse()
+	end := strings.Index(pattern[start:], "}")
+	if end == -1 {
+		return []string{pattern}
+	}
+	end = start + end
+	inner := pattern[start+1 : end]
+	alts := strings.Split(inner, ",")
+	var results []string
+	for _, alt := range alts {
+		expanded := pattern[:start] + alt + pattern[end+1:]
+		results = append(results, expandBraces(expanded)...)
+	}
+	return results
+}
 
-	if *dryRunFlag && *yesFlag {
-		fmt.Fprintf(os.Stderr, "Error: --dry-run cannot be used with --yes\n")
-		os.Exit(1)
+// fileMatchesAnyPattern checks if path matches any of the provided patterns using filepath.Match
+func fileMatchesAnyPattern(path string, patterns []string) bool {
+	for _, p := range patterns {
+		ok, err := filepath.Match(p, path)
+		if err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+// collectInputFiles resolves args into a unique list of files, honoring recursion and excludes.
+func collectInputFiles(args []string, excludes []string) ([]string, error) {
+	// Pre-expand excludes' braces
+	var expandedExcludes []string
+	for _, ex := range excludes {
+		expandedExcludes = append(expandedExcludes, expandBraces(ex)...)
 	}
 
-	if flag.NArg() != 1 {
-		flag.Usage()
-		os.Exit(1)
+	seen := make(map[string]struct{})
+	var files []string
+	addFile := func(p string) {
+		// Normalize to OS-specific path separators as returned by walk/glob
+		p = filepath.Clean(p)
+		if fileMatchesAnyPattern(p, expandedExcludes) {
+			return
+		}
+		if _, exists := seen[p]; !exists {
+			seen[p] = struct{}{}
+			files = append(files, p)
+		}
 	}
 
-	workflowFile := flag.Arg(0)
+	for _, arg := range args {
+		if isGlobPattern(arg) {
+			for _, pat := range expandBraces(arg) {
+				matches, _ := filepath.Glob(pat)
+				for _, m := range matches {
+					// Filter only files (ignore directories)
+					info, err := os.Stat(m)
+					if err == nil && !info.IsDir() {
+						addFile(m)
+					}
+				}
+			}
+			continue
+		}
 
-	if _, err := os.Stat(workflowFile); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Error: File '%s' not found\n", workflowFile)
-		os.Exit(1)
+		st, err := os.Stat(arg)
+		if err != nil {
+			// Ignore non-existent when treated as a file path; main() will handle empty set later
+			continue
+		}
+		if st.IsDir() {
+			// Recurse and collect *.yml, *.yaml
+			_ = filepath.WalkDir(arg, func(path string, d os.DirEntry, err error) error {
+				if err != nil {
+					return nil
+				}
+				if d.IsDir() {
+					return nil
+				}
+				lower := strings.ToLower(path)
+				if strings.HasSuffix(lower, ".yml") || strings.HasSuffix(lower, ".yaml") {
+					addFile(path)
+				}
+				return nil
+			})
+			continue
+		}
+		// Plain file
+		addFile(arg)
 	}
 
+	return files, nil
+}
+// END: directory/glob helpers
+
+// processWorkflowFile performs end-to-end processing for a single workflow file.
+// It returns (wouldChange, updated, noActions, err)
+func processWorkflowFile(workflowFile string, expandMajor bool, policy UpdatePolicy, dryRun bool, yes bool, client *github.Client) (bool, bool, bool, error) {
 	fmt.Printf("\n%s %s\n\n", bold("Scanning workflow"), workflowFile)
 
 	content, err := os.ReadFile(workflowFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		os.Exit(1)
+		return false, false, false, fmt.Errorf("error reading file: %w", err)
 	}
 
 	actions := extractActions(string(content))
 	occurrences := extractOccurrences(string(content))
 	if len(actions) == 0 {
 		fmt.Printf("%s No GitHub Actions references found in %s\n", bold("No actions:"), workflowFile)
-		os.Exit(1)
+		return false, false, true, nil
 	}
 
 	fmt.Println(bold("Discovered actions:\n"))
@@ -256,28 +342,13 @@ func main() {
 	}
 	fmt.Println()
 
-	// Determine effective update policy (default to latest major) from flag only
-	effectivePolicy := UpdatePolicyMajor
-	if p, err := parsePolicy(*policyFlag); err == nil {
-		effectivePolicy = p
-	}
-
 	fmt.Println(bold("Resolving latest versions and SHAs (parallel)...\n"))
 
-	token, err := getGitHubToken()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
 	ctx := context.Background()
-	client := github.NewTokenClient(ctx, token)
-
-	actionInfos := getActionInfosForOccurrences(ctx, client, occurrences, *expandMajorFlag, effectivePolicy)
-
+	actionInfos := getActionInfosForOccurrences(ctx, client, occurrences, expandMajor, policy)
 	if len(actionInfos) == 0 {
 		fmt.Println(bold("No action information retrieved."))
-		os.Exit(1)
+		return false, false, false, fmt.Errorf("no action information retrieved")
 	}
 
 	fmt.Println()
@@ -289,33 +360,30 @@ func main() {
 	fmt.Println()
 	printPlannedChanges(occurrences, actionInfos)
 
-	// Dry-run: exit after preview without prompting or writing. Exit code 2 if changes would be made.
-	if *dryRunFlag {
+	// Dry-run: exit after preview without writing.
+	if dryRun {
 		if string(content) == updatedContent {
-			return
+			return false, false, false, nil
 		}
-		os.Exit(2)
+		return true, false, false, nil
 	}
 
 	if string(content) == updatedContent {
 		fmt.Println()
 		fmt.Println(bold("\nUp to date:"), "All actions are already pinned to the latest versions.")
-		return
+		return false, false, false, nil
 	}
 
 	fmt.Println()
-	// If --yes is set, skip the prompt and apply immediately
-	if !*yesFlag {
+	if !yes {
 		if !promptConfirmation(bold("Apply changes?") + " [y/N] ") {
 			fmt.Println(bold("\nNo changes applied."))
-			return
+			return true, false, false, nil
 		}
 	}
 
-	err = os.WriteFile(workflowFile, []byte(updatedContent), 0644)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
-		os.Exit(1)
+	if err := os.WriteFile(workflowFile, []byte(updatedContent), 0644); err != nil {
+		return true, false, false, fmt.Errorf("error writing file: %w", err)
 	}
 
 	fmt.Printf("%s %s\n", bold("\nUpdated file"), workflowFile)
@@ -326,7 +394,128 @@ func main() {
 			fmt.Printf("  %s/%s@%s # %s\n", info.Owner, info.Repo, info.SHA, info.Version)
 		}
 	}
+	return true, true, false, nil
 }
+
+func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [--expand-major] [--policy <policy>] [--yes] [--dry-run] [--exclude <glob>]... <path|glob> [<path|glob> ...]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Example: %s --policy same-major --yes .github/workflows/*.y{a,}ml\n", os.Args[0])
+	}
+	// Toggle: when a moving major tag (e.g., v4 or 4) is detected, expand the displayed version
+	// comment to the full semver tag (e.g., v4.2.2) that the major tag currently points to.
+	expandMajorFlag := flag.Bool("expand-major", false, "Expand moving major tags (vN or N) to full semver in the version comment")
+	policyFlag := flag.String("policy", "major", "Update policy: major (default), same-major, requested")
+	yesFlag := flag.Bool("yes", false, "Apply changes without confirmation prompt")
+	dryRunFlag := flag.Bool("dry-run", false, "Preview planned updates and exit without writing")
+	var excludeFlags stringSliceFlag
+	flag.Var(&excludeFlags, "exclude", "Exclude files matching glob (repeatable)")
+	flag.Parse()
+
+	if *dryRunFlag && *yesFlag {
+		fmt.Fprintf(os.Stderr, "Error: --dry-run cannot be used with --yes\n")
+		os.Exit(1)
+	}
+
+	args := flag.Args()
+	if len(args) == 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	files, err := collectInputFiles(args, excludeFlags)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error collecting files: %v\n", err)
+		os.Exit(1)
+	}
+	if len(files) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: no files matched inputs\n")
+		os.Exit(1)
+	}
+
+	// Determine effective update policy (default to latest major) from flag only
+	effectivePolicy := UpdatePolicyMajor
+	if p, err := parsePolicy(*policyFlag); err == nil {
+		effectivePolicy = p
+	}
+
+	token, err := getGitHubToken()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	ctx := context.Background()
+	client := github.NewTokenClient(ctx, token)
+
+	// Process files
+	anyWouldChange := false
+	anyError := false
+	appliedCount := 0
+	upToDateCount := 0
+	noActionsCount := 0
+	skippedCount := 0
+
+	for _, f := range files {
+		wouldChange, updated, noActions, perr := processWorkflowFile(f, *expandMajorFlag, effectivePolicy, *dryRunFlag, *yesFlag, client)
+		if perr != nil {
+			anyError = true
+			fmt.Fprintf(os.Stderr, "Error: %s: %v\n", f, perr)
+			continue
+		}
+		if noActions {
+			noActionsCount++
+		}
+		if wouldChange {
+			anyWouldChange = true
+		}
+		if *dryRunFlag {
+			if !wouldChange {
+				upToDateCount++
+			}
+		} else {
+			if updated {
+				appliedCount++
+			} else if wouldChange && !*yesFlag {
+				// user skipped
+				skippedCount++
+			} else if !wouldChange {
+				upToDateCount++
+			}
+		}
+	}
+
+	// Final summary
+	fmt.Println()
+	fmt.Println(bold("Summary:"))
+	fmt.Printf("  Files processed: %d\n", len(files))
+	if *dryRunFlag {
+		fmt.Printf("  Would update:   %d\n", boolToCount(anyWouldChange))
+		fmt.Printf("  Up to date:     %d\n", upToDateCount)
+		fmt.Printf("  No actions:     %d\n", noActionsCount)
+	} else {
+		fmt.Printf("  Applied:         %d\n", appliedCount)
+		fmt.Printf("  Skipped:         %d\n", skippedCount)
+		fmt.Printf("  Up to date:      %d\n", upToDateCount)
+		fmt.Printf("  No actions:      %d\n", noActionsCount)
+	}
+	if anyError {
+		fmt.Printf("  Errors:          see above\n")
+	}
+
+	// Exit codes
+	if *dryRunFlag {
+		if anyWouldChange {
+			os.Exit(2)
+		}
+		// else 0
+	}
+	if anyError {
+		os.Exit(1)
+	}
+}
+
+// boolToCount turns a bool into 1 or 0 for summary convenience
+func boolToCount(b bool) int { if b { return 1 }; return 0 }
 
 func extractActions(content string) []string {
 	// Preserve order of first appearance while de-duplicating
