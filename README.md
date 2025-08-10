@@ -94,6 +94,10 @@ If no token is found, the program exits with an error.
 - [Pin your GitHub Actions (Michael Heap)](https://michaelheap.com/pin-your-github-actions/)
 - [GitHub Actions: Security Risk (Julien Renaux)](https://julienrenaux.fr/2019/12/20/github-actions-security-risk/)
 - [mheap/pin-github-action](https://github.com/mheap/pin-github-action)
+- [martinbonnin/pin-github-actions](https://github.com/martinbonnin/pin-github-actions)
+- [Wiz: GitHub Actions Security Guide](https://www.wiz.io/blog/github-actions-security-guide)
+- [sethvargo/ratchet](https://github.com/sethvargo/ratchet)
+- [GitHub Docs: Secure use of actions in workflows](https://docs.github.com/en/actions/reference/security/secure-use)
 
 ## License
 
