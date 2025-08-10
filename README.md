@@ -86,6 +86,15 @@ Requires a GitHub token with public repo read access. The token is discovered in
 
 If no token is found, the program exits with an error.
 
+## Similar tools & related resources
+
+- [Renovate](https://github.com/renovatebot/renovate)
+- [Dependabot](https://github.com/dependabot/dependabot-core)
+- [stacklok/frizbee](https://github.com/stacklok/frizbee)
+- [Pin your GitHub Actions (Michael Heap)](https://michaelheap.com/pin-your-github-actions/)
+- [GitHub Actions: Security Risk (Julien Renaux)](https://julienrenaux.fr/2019/12/20/github-actions-security-risk/)
+- [mheap/pin-github-action](https://github.com/mheap/pin-github-action)
+
 ## License
 
 MIT
