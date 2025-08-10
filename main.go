@@ -207,7 +207,7 @@ func getGitHubTokenFromHostsFile() (string, error) {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [--expand-major] [--policy <policy>] [--yes] [--dry-run] <workflow-file>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [--expand-major] [--policy <policy>] [--yes|--write] [--dry-run] <workflow-file>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Example: %s --policy same-major --yes .github/workflows/update_cli_docs.yml\n", os.Args[0])
 	}
 	// Toggle: when a moving major tag (e.g., v4 or 4) is detected, expand the displayed version
@@ -215,11 +215,14 @@ func main() {
 	expandMajorFlag := flag.Bool("expand-major", false, "Expand moving major tags (vN or N) to full semver in the version comment")
 	policyFlag := flag.String("policy", "major", "Update policy: major (default), same-major, requested")
 	yesFlag := flag.Bool("yes", false, "Apply changes without confirmation prompt")
+	writeFlag := flag.Bool("write", false, "Apply changes without confirmation prompt (alias of --yes)")
 	dryRunFlag := flag.Bool("dry-run", false, "Preview planned updates and exit without writing")
 	flag.Parse()
 
-	if *dryRunFlag && *yesFlag {
-		fmt.Fprintf(os.Stderr, "Error: --dry-run cannot be used with --yes\n")
+	nonInteractiveApply := *yesFlag || *writeFlag
+
+	if *dryRunFlag && nonInteractiveApply {
+		fmt.Fprintf(os.Stderr, "Error: --dry-run cannot be used with --yes/--write\n")
 		os.Exit(1)
 	}
 
@@ -305,7 +308,7 @@ func main() {
 
 	fmt.Println()
 	// If --yes is set, skip the prompt and apply immediately
-	if !*yesFlag {
+	if !nonInteractiveApply {
 		if !promptConfirmation(bold("Apply changes?") + " [y/N] ") {
 			fmt.Println(bold("\nNo changes applied."))
 			return
