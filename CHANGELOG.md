@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.0](https://github.com/staticaland/pin-github-actions/compare/v1.10.0...v1.11.0) (2025-08-10)
+
+
+### Features
+
+* Add --write flag as alias for --yes in non-interactive mode ([#38](https://github.com/staticaland/pin-github-actions/issues/38)) ([ac7620f](https://github.com/staticaland/pin-github-actions/commit/ac7620fb2a81fcbecff18a67974b6df93c2d0660))
+* Fix xattr quarantine removal for macOS with conditional check ([#33](https://github.com/staticaland/pin-github-actions/issues/33)) ([c383b7f](https://github.com/staticaland/pin-github-actions/commit/c383b7f0073df1a00222a16fe2a49838bcf26859))
+
 ## [1.10.0](https://github.com/staticaland/pin-github-actions/compare/v1.9.0...v1.10.0) (2025-08-09)
 
 
