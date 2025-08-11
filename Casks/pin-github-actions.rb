@@ -2,7 +2,7 @@
 cask "pin-github-actions" do
   desc ""
   homepage ""
-  version "1.10.0"
+  version "1.11.0"
 
   livecheck do
     skip "Auto-generated on release."
@@ -12,28 +12,28 @@ cask "pin-github-actions" do
 
   on_macos do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.10.0/pin-github-actions_1.10.0_darwin_amd64.tar.gz"
-      sha256 "4326f45d96d48b6503410ae594c5d68f163ace9338af12f71276e73c102a7927"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.11.0/pin-github-actions_1.11.0_darwin_amd64.tar.gz"
+      sha256 "e33939d34259dd0291680ce3c1e3fa464c975357111ab4e8f4eb962111d06cba"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.10.0/pin-github-actions_1.10.0_darwin_arm64.tar.gz"
-      sha256 "f52a34ba45f2b6f75c1e71ba2a98417f96666d772921f42726f370add635879a"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.11.0/pin-github-actions_1.11.0_darwin_arm64.tar.gz"
+      sha256 "78e8d62f8b12adc1b2fd02d465b1cdc2e95466218314645ceb14cde6b5defba2"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.10.0/pin-github-actions_1.10.0_linux_amd64.tar.gz"
-      sha256 "2b87324e95d17f83f5b16f2be33781853fdd659865fe9e2465310989bcec8dc2"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.11.0/pin-github-actions_1.11.0_linux_amd64.tar.gz"
+      sha256 "8015f97ca2e2aff705d3a8a1361833ed5b2bb22267495fe2a996fc872fee8b8b"
     end
     on_arm do
-      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.10.0/pin-github-actions_1.10.0_linux_arm64.tar.gz"
-      sha256 "b00e5cb006ff72c3b64a61e484d63456660d50dacb48f76404feeb5747ad06c6"
+      url "https://github.com/staticaland/pin-github-actions/releases/download/v1.11.0/pin-github-actions_1.11.0_linux_arm64.tar.gz"
+      sha256 "179718a0e0c21d4ab202c3afd1063c6634edd2a7d6412e75d2aa3f237df43333"
     end
   end
 
   postflight do
-    if OS.mac? && File.exist?("/usr/bin/xattr")
+    if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
       system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/pin-github-actions"]
     end
   end
