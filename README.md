@@ -26,10 +26,12 @@ If the cask is unavailable on your Linux setup, use one of the alternatives belo
 go build -o pin-github-actions
 ```
 
-Or install directly:
+### Using Go
 
 ```bash
-go install github.com/staticaland/pin-github-actions@latest
+go install github.com/staticaland/pin-github-actions@v1.10.0
+# add the path to your .bashrc
+export PATH=$PATH:$(go env GOPATH)/bin
 ```
 
 ### Prebuilt binaries
