@@ -88,7 +88,10 @@ If no token is found, the program exits with an error.
 
 ## Similar tools & related resources
 
-- [Renovate](https://github.com/renovatebot/renovate)
+- [Renovate](https://github.com/renovatebot/renovate) - Has [GitHub Actions manager](https://docs.renovatebot.com/modules/manager/github-actions/) and presets that work similarly to this tool:
+  - [`helpers:pinGitHubActionDigests`](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigests) - Pins GitHub Actions to commit SHAs
+  - [`helpers:pinGitHubActionDigestsToSemver`](https://docs.renovatebot.com/presets-helpers/#helperspingithubactiondigeststosemver) - Similar to this tool's `--expand-major` flag
+  - [Related discussion](https://github.com/renovatebot/renovate/discussions/24780)
 - [Dependabot](https://github.com/dependabot/dependabot-core)
 - [stacklok/frizbee](https://github.com/stacklok/frizbee)
 - [Pin your GitHub Actions (Michael Heap)](https://michaelheap.com/pin-your-github-actions/)
